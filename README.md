@@ -13,13 +13,13 @@ npm run dev
 
 ## 免費架設到 GitHub Pages
 
-1. 在 GitHub 建立一個新的 repository，把這個資料夾推上去（分支名稱用 `main`）
+1. 在 GitHub 建立一個新的 repository，把這個專案推上去（本機已是 git 專案，分支為 `main`）：`git remote add origin <repository 網址>`，再 `git push -u origin main`
 2. 到 repository 的 **Settings → Pages**，把 **Source** 改成 **GitHub Actions**
 3. 之後每次推送到 `main`，[.github/workflows/deploy.yml](.github/workflows/deploy.yml) 會自動編譯並發佈到 `https://你的帳號.github.io/專案名稱/`
 
-網站主程式約 95 KB（壓縮後約 36 KB）；匯出與 AI 字幕的程式只在使用時才下載；Whisper 模型從 Hugging Face 下載，不佔 GitHub 空間。
+網站主程式約 170 KB（壓縮後約 70 KB）；匯出、AI 去背、字幕、翻譯、語音等程式只在使用時才下載；AI 模型從 Hugging Face 等處下載並快取在使用者瀏覽器，不佔 GitHub 空間。
 
-## 目前功能（v0.2）
+## 目前功能（v0.3）
 
 所有處理（剪輯、特效、匯出、AI 辨識）都在使用者自己的電腦上進行，檔案與聲音不會上傳，網站方也沒有伺服器成本。
 
@@ -152,8 +152,8 @@ npm run dev
 
 ## 下一步路線圖
 
-1. 字幕逐字時間軸（word-level timestamps）與卡拉 OK 式逐字上色
-2. 一般物體的 AI 去背（目前只支援人像）、遮罩跟著追蹤移動
-3. 更多 GPU 特效、自動刪贅詞、線上範本市集
-4. 多人協作、雲端同步
-5. 專案檔匯出 / 匯入、雲端同步、範本市集
+1. 以逐字稿剪輯與自動刪贅詞（需要逐字時間戳），順便做卡拉 OK 式逐字字幕
+2. 一般物體的 AI 去背（目前只支援人像）、鋼筆遮罩、遮罩跟著追蹤移動
+3. AI 美顏美體、AI 畫質增強與補幀
+4. 多機剪輯
+5. 多人協作、雲端同步、線上範本市集
