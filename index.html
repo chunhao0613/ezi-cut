@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>NovaCut 影片剪輯器</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;700;900&family=Noto+Serif+TC:wght@700&family=LXGW+WenKai+TC:wght@400;700&family=Bebas+Neue&family=Montserrat:wght@400;800&family=Pacifico&family=Permanent+Marker&family=Orbitron:wght@700&family=Press+Start+2P&display=swap" rel="stylesheet" />
+</head>
+<body>
+  <div id="app">
+    <header class="topbar">
+      <div class="brand"><span class="logo">▶</span>NovaCut</div>
+      <input id="projName" class="proj-name" spellcheck="false" />
+      <div class="spacer"></div>
+      <button id="btnUndo" title="復原 (Ctrl+Z)">↶<span class="lbl"> 復原</span></button>
+      <button id="btnRedo" title="重做 (Ctrl+Shift+Z)">↷<span class="lbl"> 重做</span></button>
+      <button id="btnNew" class="hide-mobile" title="清空並開始新專案">新專案</button>
+      <button id="btnShot" class="hide-mobile" title="把目前畫面存成 PNG">📷 截圖</button>
+      <button id="btnExport" class="primary">⬇<span class="lbl"> 匯出影片</span></button>
+    </header>
+
+    <main class="workspace">
+      <aside class="library">
+        <nav class="lib-tabs" id="libTabs"></nav>
+        <div class="lib-body" id="libBody"></div>
+      </aside>
+
+      <section class="preview">
+        <div class="stage" id="stage">
+          <canvas id="canvas"></canvas>
+          <canvas id="overlay"></canvas>
+          <div class="stage-empty" id="stageEmpty">
+            <div class="big">把影片、音樂、圖片拖進來開始剪輯</div>
+            <div class="dim">全部在瀏覽器本機處理，不會上傳任何檔案</div>
+          </div>
+        </div>
+        <div class="transport">
+          <span id="timeCur" class="tc">00:00.00</span>
+          <div class="transport-btns">
+            <button id="btnStart" title="回到開頭 (Home)">⏮</button>
+            <button id="btnBack" title="上一格 (←)">⏪</button>
+            <button id="btnPlay" class="play" title="播放 / 暫停 (空白鍵)">▶</button>
+            <button id="btnFwd" title="下一格 (→)">⏩</button>
+            <button id="btnEnd" title="跳到結尾 (End)">⏭</button>
+          </div>
+          <span id="timeDur" class="tc dim">00:00.00</span>
+          <button id="btnFull" title="全螢幕預覽">⛶</button>
+        </div>
+      </section>
+
+      <aside class="inspector" id="inspector"></aside>
+    </main>
+
+    <section class="timeline" id="timeline">
+      <div class="tl-resize" id="tlResize"></div>
+      <div class="tl-toolbar">
+        <button data-act="split" title="在播放頭分割 (S)">✂ 分割</button>
+        <button data-act="delete" title="刪除 (Delete)">🗑 刪除</button>
+        <button data-act="duplicate" title="複製一份 (Ctrl+D)">⧉ 複製</button>
+        <button data-act="detach" title="把影片的聲音拆成獨立音訊片段">🎵 分離音訊</button>
+        <button data-act="addTrack" title="新增一條軌道">＋ 軌道</button>
+        <label class="chk" title="拖曳時自動對齊片段邊緣與播放頭"><input type="checkbox" id="snapToggle" checked /> 磁吸</label>
+        <div class="spacer"></div>
+        <button data-act="zoomOut" title="縮小 (-)">－</button>
+        <input type="range" id="zoomRange" min="4" max="400" value="80" />
+        <button data-act="zoomIn" title="放大 (+)">＋</button>
+        <button data-act="zoomFit" title="整個專案剛好放進畫面">適合</button>
+      </div>
+      <div class="tl-main">
+        <div class="tl-corner"></div>
+        <canvas class="tl-ruler" id="tlRuler"></canvas>
+        <div class="tl-heads" id="tlHeads"></div>
+        <div class="tl-scroll" id="tlScroll">
+          <div class="tl-inner" id="tlInner">
+            <div id="tlRows"></div>
+            <div id="tlClips"></div>
+            <div class="tl-snapline" id="tlSnap"></div>
+            <div class="tl-playhead" id="tlPlayhead"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <nav class="mobile-nav" id="mobileNav">
+    <button data-mtab="library"><span>📁</span>素材</button>
+    <button data-mtab="inspector"><span>🎛</span>編輯</button>
+    <button data-mtab="timeline" class="on"><span>🎞</span>時間軸</button>
+  </nav>
+  <div id="toast"></div>
+  <div id="modal" class="modal hidden"></div>
+  <div id="dropMask" class="drop-mask hidden"><div>放開以匯入媒體</div></div>
+  <input type="file" id="fileInput" multiple accept="video/*,audio/*,image/*,.cube" hidden />
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>
