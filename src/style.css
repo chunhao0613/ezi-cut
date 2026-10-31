@@ -333,3 +333,7 @@ kbd { background: var(--panel3); border: 1px solid var(--line); border-bottom-wi
   .transport { justify-content: space-between; }
   .transport-btns { flex: none; }
 }
+.xp { width: min(520px, 94vw); max-height: 88vh; overflow-y: auto; }
+.xp-body { display: flex; flex-direction: column; gap: 8px; }
+.xp-kinds { display: flex; flex-wrap: wrap; border-bottom: 1px solid var(--line); margin: 2px 0 4px; }
+.xp-kinds .insp-tab { flex: 1 1 auto; font-size: 12px; padding: 7px 6px; }

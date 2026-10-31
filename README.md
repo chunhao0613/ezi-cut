@@ -106,7 +106,11 @@ npm run dev
 
 ### 輸出
 - **快速匯出**（[Mediabunny](https://github.com/Vanilagy/mediabunny) + WebCodecs）：逐格解碼、合成、編碼，不必等影片播完，切到其他分頁也會繼續，可中途取消
-- MP4（H.264 / AAC）或 WebM（VP9 / Opus）；三種畫質
+- **影片**：MP4、MOV、WebM、MKV、MPEG-TS；影片編碼 H.264 / H.265 / AV1 / VP9 / VP8，音訊 AAC / Opus / MP3 / FLAC / PCM（只顯示這台電腦能編碼的組合）
+- 解析度（原始、4K、2K、1080p、720p、480p、360p 或自訂寬度）、影格率（23.976–60 fps）、畫質（低到極致或自訂位元率）、匯出範圍（整段、選取片段、從播放頭起、自訂起訖）、可不含聲音，並顯示預估檔案大小
+- **只要聲音**：MP3、M4A、WAV 16 / 24-bit、FLAC、OGG（Opus）、AAC
+- **GIF 動圖**、**圖片序列**（PNG / JPG / WebP 打包成 ZIP）、**單張畫面**（PNG / JPG / WebP，可放大到 4K）
+- 10 種平台預設：YouTube 1080p / 4K、TikTok / Reels / Shorts、Instagram、LINE / Discord 小檔、剪輯交換 MOV、網頁 WebM、Podcast MP3、無損 WAV、貼圖 GIF
 - 不支援 WebCodecs 的瀏覽器自動改用即時錄製
 - 單張畫面截圖存成 PNG
 

@@ -17,7 +17,6 @@ import { $, h, toast, fmtTime, debounce, openModal } from './ui.js';
 
 // 匯出用的函式庫（Mediabunny）只在按下匯出時才載入，讓首次開啟網站更快
 const canFastExport = () => typeof VideoEncoder !== 'undefined' && typeof AudioEncoder !== 'undefined';
-const QUALITIES = [['medium', '標準'], ['high', '高畫質'], ['veryHigh', '極致']];
 
 const SAVE_KEY = 'novacut.project';
 const canvas = $('canvas');
@@ -608,54 +607,10 @@ function openExport() {
   openRecordExport(dur);
 }
 
-// WebCodecs 離線匯出（比即時更快，背景分頁也能跑）
-function openFastExport(dur) {
-  pause();
-  const fmtSel = h('select', {}, h('option', { value: 'mp4' }, 'MP4（H.264 / AAC，相容性最好）'), h('option', { value: 'webm' }, 'WebM（VP9 / Opus）'));
-  const q = h('select', {}, QUALITIES.map(([v, l]) => h('option', { value: v }, l)));
-  q.value = 'high';
-  const bar = h('div', { class: 'bar' });
-  const status = h('div', { class: 'dim' }, `長度 ${fmtTime(dur)}，解析度 ${store.project.width}×${store.project.height}，${store.project.fps} fps`);
-  const goBtn = h('button', { class: 'primary' }, '開始匯出');
-  const cancelBtn = h('button', {}, '取消');
-  const ctrl = new AbortController();
-  let running = false;
-  const close = openModal(h('div', { class: 'export' },
-    h('h2', {}, '匯出影片 ', h('span', { class: 'tag' }, '⚡ 快速模式')),
-    h('div', { class: 'row' }, h('label', {}, '格式'), fmtSel),
-    h('div', { class: 'row' }, h('label', {}, '畫質'), q),
-    status,
-    h('div', { class: 'progress' }, bar),
-    h('div', { class: 'hint' }, '使用硬體編碼逐格輸出，不用等影片播完，切到其他分頁也會繼續。'),
-    h('div', { class: 'modal-actions' }, cancelBtn, goBtn)));
-  cancelBtn.onclick = () => (running ? ctrl.abort() : close());
-  goBtn.onclick = async () => {
-    running = true;
-    goBtn.disabled = fmtSel.disabled = q.disabled = true;
-    status.textContent = '準備中…';
-    exporting = { offline: true };
-    try {
-      const { fastExport } = await import('./exporter.js');
-      const res = await fastExport({
-        container: fmtSel.value,
-        quality: q.value,
-        signal: ctrl.signal,
-        onProgress: (p, label) => {
-          bar.style.width = `${(p * 100).toFixed(1)}%`;
-          status.textContent = `${label || '匯出中…'}  ${(p * 100).toFixed(0)}%`;
-        },
-      });
-      if (res) {
-        download(res.blob, res.ext);
-        toast(`匯出完成：${(res.blob.size / 1e6).toFixed(1)} MB，花 ${res.seconds.toFixed(1)} 秒（${(dur / res.seconds).toFixed(1)}× 即時速度）`);
-      } else toast('已取消匯出');
-    } catch (e) {
-      console.error(e);
-      toast('匯出失敗：' + e.message);
-    }
-    exporting = null;
-    close();
-  };
+// WebCodecs 離線匯出：多種格式、解析度、影格率、畫質（對話框與編碼程式只在打開時才載入）
+async function openFastExport() {
+  const { openExportDialog } = await import('./exportdialog.js');
+  openExportDialog({ pause, download, setExporting: (on) => (exporting = on ? { offline: true } : null) });
 }
 
 // 備援：瀏覽器不支援 WebCodecs 時，用 MediaRecorder 即時錄製

@@ -13,11 +13,15 @@
   },
   "dependencies": {
     "@huggingface/transformers": "^4.3.1",
+    "@mediabunny/flac-encoder": "^1.65.0",
+    "@mediabunny/mp3-encoder": "^1.65.0",
     "@mediapipe/tasks-vision": "^1.1.1",
     "@mintplex-labs/piper-tts-web": "^1.0.5",
     "@shiguredo/rnnoise-wasm": "^2025.1.5",
+    "fflate": "^0.8.3",
+    "gifenc": "^1.0.3",
     "kokoro-js": "^1.2.1",
-    "mediabunny": "^1.61.6",
+    "mediabunny": "^1.65.0",
     "opencc-js": "^1.4.2"
   }
 }
