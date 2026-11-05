@@ -46,7 +46,8 @@ export function initLibrary(api) {
 
   // ---------- 字幕 ----------
   let savedModel = null;
-  try { savedModel = localStorage.getItem('ezicut.asrModel'); } catch {}
+  // 沿用改名前的儲存名稱，使用者原本選的字幕模型才不會被重設
+  try { savedModel = localStorage.getItem('novacut.asrModel'); } catch {}
   const trOpts = { src: 'zh-Hant', tgt: 'en', mode: 'bilingual', busy: false, status: '', progress: 0 };
   const asr = { source: '', model: savedModel, userPicked: !!savedModel, lang: 'chinese', traditional: true, busy: false, status: '', progress: 0 };
   let statusEl = null;
@@ -91,7 +92,7 @@ export function initLibrary(api) {
         input.onchange = () => {
           asr.model = m.id;
           asr.userPicked = true;
-          try { localStorage.setItem('ezicut.asrModel', m.id); } catch {}
+          try { localStorage.setItem('novacut.asrModel', m.id); } catch {}
         };
         const badgeCls = m.badge.startsWith('★') ? 'rec' : m.badge === '不建議' || m.unsupported ? 'bad' : '';
         modelBox.append(h('label', { class: `model-item${m.unsupported ? ' off' : ''}` },

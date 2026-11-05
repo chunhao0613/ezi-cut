@@ -45,7 +45,8 @@ export async function exportProjectFile(onProgress) {
 
 export async function importProjectFile(file, onProgress) {
   const d = JSON.parse(await file.text());
-  if (!d.ezicutProject) throw new Error('這不是 EziCut 專案檔');
+  // 改名前（NovaCut）匯出的 .novacut 專案檔也要能開
+  if (!d.ezicutProject && !d.novacutProject) throw new Error('這不是 EziCut 專案檔');
   const map = {};
   const entries = Object.entries(d.files || {});
   for (let i = 0; i < entries.length; i++) {
