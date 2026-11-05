@@ -194,12 +194,13 @@ const toB64 = (blob) => new Promise((r) => {
 export async function exportTemplateFile(tpl) {
   const files = {};
   for (const [id, f] of Object.entries(tpl.files || {})) files[id] = { name: f.name, type: f.type, data: await toB64(f.blob) };
-  const json = JSON.stringify({ novacutTemplate: 1, name: tpl.name, project: tpl.project, thumb: tpl.thumb, files });
+  const json = JSON.stringify({ ezicutTemplate: 1, name: tpl.name, project: tpl.project, thumb: tpl.thumb, files });
   return new Blob([json], { type: 'application/json' });
 }
 export async function importTemplateFile(file) {
   const d = JSON.parse(await file.text());
-  if (!d.novacutTemplate) throw new Error('這不是 NovaCut 範本檔');
+  // 改名前（NovaCut）匯出的範本檔也要能開
+  if (!d.ezicutTemplate && !d.novacutTemplate) throw new Error('這不是 EziCut 範本檔');
   const files = {};
   for (const [id, f] of Object.entries(d.files || {})) files[id] = { name: f.name, type: f.type, blob: await (await fetch(f.data)).blob() };
   const id = uid();

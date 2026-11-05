@@ -23,6 +23,7 @@ const DEFAULTS = {
   kind: 'video', container: 'mp4', videoCodec: 'avc', audioCodec: 'aac', res: 'orig', customW: 1280, fps: 0, quality: 'high', mbps: 16,
   abr: 192, audioFormat: 'mp3', includeAudio: true, range: 'all', r0: 0, r1: 0, gifWidth: 480, gifFps: 15, imgFps: 0, imageFormat: 'png',
 };
+// 沿用改名前的儲存名稱，使用者原本的匯出偏好才不會消失
 const KEY = 'novacut.exportPrefs';
 function loadPrefs() {
   try {

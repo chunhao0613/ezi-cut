@@ -765,7 +765,7 @@ export function initInspector(api) {
         h('div', { class: 'tool-row' },
           h('button', { onclick: () => api.exportProject() }, '⬇ 匯出專案檔'),
           h('button', { onclick: () => api.importProject() }, '📂 開啟專案檔')),
-        h('div', { class: 'hint' }, '專案檔（.novacut）包含時間軸與用到的所有素材、LUT，可以備份或換一台電腦繼續剪。'),
+        h('div', { class: 'hint' }, '專案檔（.ezicut）包含時間軸與用到的所有素材、LUT，可以備份或換一台電腦繼續剪。'),
       ),
       group('快捷鍵', h('div', { class: 'keys' }, [
         ['空白鍵', '播放 / 暫停'], ['S', '在播放頭分割'], ['Delete', '刪除片段'], ['Ctrl+Z / Ctrl+Shift+Z', '復原 / 重做'],

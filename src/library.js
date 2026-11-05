@@ -46,6 +46,7 @@ export function initLibrary(api) {
 
   // ---------- 字幕 ----------
   let savedModel = null;
+  // 沿用改名前的儲存名稱，使用者原本選的字幕模型才不會被重設
   try { savedModel = localStorage.getItem('novacut.asrModel'); } catch {}
   const trOpts = { src: 'zh-Hant', tgt: 'en', mode: 'bilingual', busy: false, status: '', progress: 0 };
   const asr = { source: '', model: savedModel, userPicked: !!savedModel, lang: 'chinese', traditional: true, busy: false, status: '', progress: 0 };
@@ -442,7 +443,7 @@ export function initLibrary(api) {
       const t = await saveTemplate(name.value.trim() || '我的範本', [...chosen]);
       close();
       toast(`已存成範本「${t.name}」`);
-      const a = h('a', { href: URL.createObjectURL(await exportTemplateFile(t)), download: `${t.name}.novacut.json` });
+      const a = h('a', { href: URL.createObjectURL(await exportTemplateFile(t)), download: `${t.name}.ezicut.json` });
       if (confirm('要同時下載範本檔，方便分享給朋友嗎？')) a.click();
     };
   }

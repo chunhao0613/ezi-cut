@@ -1,4 +1,4 @@
-// 專案檔：把專案連同用到的媒體與 LUT 打包成一個 .novacut 檔，可備份或換電腦繼續剪
+// 專案檔：把專案連同用到的媒體與 LUT 打包成一個 .ezicut 檔，可備份或換電腦繼續剪
 import { store, emit, checkpoint, normalizeProject } from './state.js';
 import { importFiles } from './media.js';
 
@@ -39,13 +39,14 @@ export async function exportProjectFile(onProgress) {
     const id = c.grade?.lut;
     if (id && store.luts.has(id) && !luts[id]) luts[id] = { name: store.luts.get(id).name, cube: lutToCube(store.luts.get(id)) };
   }
-  const json = JSON.stringify({ novacutProject: 1, savedAt: new Date().toISOString(), project: p, files, luts });
+  const json = JSON.stringify({ ezicutProject: 1, savedAt: new Date().toISOString(), project: p, files, luts });
   return new Blob([json], { type: 'application/json' });
 }
 
 export async function importProjectFile(file, onProgress) {
   const d = JSON.parse(await file.text());
-  if (!d.novacutProject) throw new Error('這不是 NovaCut 專案檔');
+  // 改名前（NovaCut）匯出的 .novacut 專案檔也要能開
+  if (!d.ezicutProject && !d.novacutProject) throw new Error('這不是 EziCut 專案檔');
   const map = {};
   const entries = Object.entries(d.files || {});
   for (let i = 0; i < entries.length; i++) {

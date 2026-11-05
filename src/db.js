@@ -1,4 +1,6 @@
 // IndexedDB：把匯入的媒體檔留在本機，重新整理後還在
+// 改名前（NovaCut）的名稱，刻意保留：瀏覽器儲存是依網域區分、不看網址路徑，
+// 沿用舊名稱，使用者原本存的素材與專案在改名後才不會消失。
 const DB = 'novacut';
 const STORE = 'media';
 let dbp = null;
