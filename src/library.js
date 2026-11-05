@@ -46,7 +46,7 @@ export function initLibrary(api) {
 
   // ---------- 字幕 ----------
   let savedModel = null;
-  try { savedModel = localStorage.getItem('novacut.asrModel'); } catch {}
+  try { savedModel = localStorage.getItem('ezicut.asrModel'); } catch {}
   const trOpts = { src: 'zh-Hant', tgt: 'en', mode: 'bilingual', busy: false, status: '', progress: 0 };
   const asr = { source: '', model: savedModel, userPicked: !!savedModel, lang: 'chinese', traditional: true, busy: false, status: '', progress: 0 };
   let statusEl = null;
@@ -91,7 +91,7 @@ export function initLibrary(api) {
         input.onchange = () => {
           asr.model = m.id;
           asr.userPicked = true;
-          try { localStorage.setItem('novacut.asrModel', m.id); } catch {}
+          try { localStorage.setItem('ezicut.asrModel', m.id); } catch {}
         };
         const badgeCls = m.badge.startsWith('★') ? 'rec' : m.badge === '不建議' || m.unsupported ? 'bad' : '';
         modelBox.append(h('label', { class: `model-item${m.unsupported ? ' off' : ''}` },
@@ -442,7 +442,7 @@ export function initLibrary(api) {
       const t = await saveTemplate(name.value.trim() || '我的範本', [...chosen]);
       close();
       toast(`已存成範本「${t.name}」`);
-      const a = h('a', { href: URL.createObjectURL(await exportTemplateFile(t)), download: `${t.name}.novacut.json` });
+      const a = h('a', { href: URL.createObjectURL(await exportTemplateFile(t)), download: `${t.name}.ezicut.json` });
       if (confirm('要同時下載範本檔，方便分享給朋友嗎？')) a.click();
     };
   }

@@ -1,5 +1,5 @@
 // IndexedDB：把匯入的媒體檔留在本機，重新整理後還在
-const DB = 'novacut';
+const DB = 'ezicut';
 const STORE = 'media';
 let dbp = null;
 

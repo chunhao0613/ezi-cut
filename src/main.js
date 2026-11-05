@@ -18,7 +18,7 @@ import { $, h, toast, fmtTime, debounce, openModal } from './ui.js';
 // 匯出用的函式庫（Mediabunny）只在按下匯出時才載入，讓首次開啟網站更快
 const canFastExport = () => typeof VideoEncoder !== 'undefined' && typeof AudioEncoder !== 'undefined';
 
-const SAVE_KEY = 'novacut.project';
+const SAVE_KEY = 'ezicut.project';
 const canvas = $('canvas');
 const overlay = $('overlay');
 const octx = overlay.getContext('2d');
@@ -211,11 +211,11 @@ initInspector({
   exportProject: () => busyTask('匯出專案檔', async (progress) => {
     const { exportProjectFile } = await import('./projectfile.js');
     const blob = await exportProjectFile(progress);
-    download(blob, 'novacut');
+    download(blob, 'ezicut');
     toast(`已匯出專案檔（${(blob.size / 1e6).toFixed(1)} MB）`);
   }),
   importProject: () => {
-    const input = h('input', { type: 'file', accept: '.novacut,.json,application/json' });
+    const input = h('input', { type: 'file', accept: '.ezicut,.json,application/json' });
     input.onchange = () => input.files[0] && busyTask('開啟專案檔', async (progress) => {
       const { importProjectFile } = await import('./projectfile.js');
       const r = await importProjectFile(input.files[0], progress);

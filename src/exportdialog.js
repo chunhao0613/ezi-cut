@@ -23,7 +23,7 @@ const DEFAULTS = {
   kind: 'video', container: 'mp4', videoCodec: 'avc', audioCodec: 'aac', res: 'orig', customW: 1280, fps: 0, quality: 'high', mbps: 16,
   abr: 192, audioFormat: 'mp3', includeAudio: true, range: 'all', r0: 0, r1: 0, gifWidth: 480, gifFps: 15, imgFps: 0, imageFormat: 'png',
 };
-const KEY = 'novacut.exportPrefs';
+const KEY = 'ezicut.exportPrefs';
 function loadPrefs() {
   try {
     return { ...DEFAULTS, ...JSON.parse(localStorage.getItem(KEY) || '{}') };
