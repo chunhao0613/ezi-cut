@@ -96,6 +96,8 @@ function audibleClips() {
 }
 
 // 用 OfflineAudioContext 把所有音訊混成一軌
+// 混音時解不開的音訊檔（名稱）；匯出完成時提醒使用者，不要默默少掉聲音
+let audioFailures = new Set();
 export async function mixAudio(dur, onStretch) {
   const SR = 48000;
   const ctx = new OfflineAudioContext(2, Math.max(1, Math.ceil(dur * SR)), SR);
@@ -105,7 +107,9 @@ export async function mixAudio(dur, onStretch) {
     if (!cache.has(m.id)) {
       try {
         cache.set(m.id, await ctx.decodeAudioData(await m.blob.arrayBuffer()));
-      } catch {
+      } catch (e) {
+        console.warn('混音時無法解碼', m.name, e);
+        audioFailures.add(m.name);
         cache.set(m.id, null);
       }
     }
@@ -227,7 +231,7 @@ class FrameRenderer {
     await preloadFonts(store.project.clips);
     if (store.project.clips.some((c) => c.aiMatte?.on)) {
       onProgress?.(0, '載入 AI 去背模型…');
-      await loadMatte();
+      if (!(await loadMatte({ force: true }))) throw new Error('AI 去背模型下載失敗，請檢查網路後再試（不然匯出的影片不會去背）');
     }
   }
   /** 畫出時間 t 的畫面，回傳輸出尺寸的畫布 */
@@ -401,10 +405,11 @@ async function exportStill(o) {
  */
 export async function exportMedia(o, onProgress = () => {}, signal) {
   await registerExtraEncoders();
+  audioFailures = new Set();
   const start = performance.now();
   const fn = { video: exportVideo, audio: exportAudio, gif: exportGif, images: exportImages, still: exportStill }[o.kind];
   const res = await fn(o, onProgress, signal);
-  return res && { ...res, seconds: (performance.now() - start) / 1000 };
+  return res && { ...res, seconds: (performance.now() - start) / 1000, audioFailures: [...audioFailures] };
 }
 
 /** 舊介面：整段專案匯出成影片 */

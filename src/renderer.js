@@ -8,14 +8,22 @@ import { GradePass, gradeActive, filtersActive, BUILTIN_LUTS } from './grade.js'
 // AI 去背模組只在第一次用到時才載入（含模型下載）
 let matteMod = null;
 let matteLoading = null;
-export function loadMatte() {
+let matteFailedAt = 0;
+export let matteError = null;
+/** 載入 AI 去背模型；失敗時回傳 null，matteError 記錄原因，畫面迴圈 15 秒內不再自動重試（避免每格都重新下載） */
+export function loadMatte({ force = false } = {}) {
+  if (!matteMod && !matteLoading && !force && performance.now() - matteFailedAt < 15000) return Promise.resolve(null);
   return (matteLoading ||= import('./matte.js').then(async (m) => {
     await m.ensure();
     matteMod = m;
+    matteError = null;
     return m;
   }).catch((e) => {
     console.warn('AI 去背載入失敗', e);
+    matteError = e;
+    matteFailedAt = performance.now();
     matteLoading = null;
+    return null;
   }));
 }
 
@@ -397,9 +405,9 @@ export class Renderer {
       }
       L.drawImage(src, cr.l * srcW, cr.t * srcH, cropW * srcW, cropH * srcH, -bw / 2, -bh / 2, bw, bh);
     } else if (c.type === 'text') {
-      ({ w: bw, h: bh } = drawText(L, c, local, t));
+      ({ w: bw, h: bh } = drawText(L, c, local + (c.animOffset || 0), t));
     } else if (c.type === 'shape') {
-      ({ w: bw, h: bh } = drawShape(L, c, W, H, local));
+      ({ w: bw, h: bh } = drawShape(L, c, W, H, local + (c.animOffset || 0)));
     }
     if (c.mask && c.mask.type !== 'none') this.applyMask(c.mask, bw, bh, W, H);
     L.restore();

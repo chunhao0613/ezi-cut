@@ -273,6 +273,7 @@ export function splitClip(clip, t) {
   b.transIn = { ...b.transIn, type: 'none' };
   b.fadeIn = 0;
   b.xfade = null; // 片段轉場屬於左半段的開頭，不跟著複製到右半段
+  b.animOffset = (clip.animOffset || 0) + local; // 貼圖循環動態、打字機等接著播，不在切點重來
   // 後面接著的片段若以這段為轉場對象，改成接右半段
   for (const o of store.project.clips) if (o.xfade?.prevId === clip.id) o.xfade = { ...o.xfade, prevId: b.id };
   for (const prop of Object.keys(clip.keyframes || {})) {

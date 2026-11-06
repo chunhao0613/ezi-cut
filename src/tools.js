@@ -35,7 +35,22 @@ export async function freezeFrame(c, t, dur = 2) {
   let at = c.start + local;
   if (local > 0.05) splitClip(c, at);
   else at = c.start; // 太靠近開頭就直接插在片段前面
-  for (const o of store.project.clips) if (o.trackId === c.trackId && o.start >= at - EPS) o.start += dur;
+  // 同一支影片拆出的音訊、人聲增強音軌與字幕要一起往後推，才不會對不上
+  const shift = new Set([c.trackId]);
+  for (const o of store.project.clips) if (o !== c && linkedMedia(o, c) && o.start < c.start + c.duration && o.start + o.duration > c.start) shift.add(o.trackId);
+  for (const t of store.project.tracks) if (t.kind?.startsWith('caption')) shift.add(t.id);
+  for (const o of store.project.clips) {
+    if (!shift.has(o.trackId) || o.start < at - EPS) continue;
+    o.start += dur;
+  }
+  // 橫跨定格位置的連動片段（例如拆出的音訊）也在同一點切開，右半段往後推
+  for (const o of [...store.project.clips]) {
+    if (o === c || !shift.has(o.trackId) || o.trackId === c.trackId) continue;
+    if (o.start < at - 0.05 && o.start + o.duration > at + 0.05) {
+      const r = splitClip(o, at);
+      if (r) r.start += dur;
+    }
+  }
   const transform = {};
   for (const p of KF_PROPS) transform[p] = getProp(c, p, local);
   const still = makeClip('image', {

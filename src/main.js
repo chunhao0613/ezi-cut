@@ -209,7 +209,7 @@ initInspector({
   split, duplicate, remove, detach, applyFilterPreset, reverse: doReverse, freeze: doFreeze,
   loadMatte: () => {
     toast('正在載入 AI 去背模型…');
-    loadMatte().then((m) => m && toast('AI 去背已就緒'));
+    loadMatte({ force: true }).then((m) => toast(m ? 'AI 去背已就緒' : 'AI 去背模型下載失敗，請檢查網路後再勾選一次'));
   },
   track: (target, videoId, size) => {
     const video = getClip(videoId);
