@@ -1,6 +1,7 @@
 // AI 自動字幕（Whisper）、字幕軌、SRT 匯入匯出
 import { store, emit, checkpoint, makeClip, addTrack, getClip } from './state.js';
 import { detectDevice } from './device.js';
+import { idleWorker } from './idle.js';
 import { srcLength, localAt } from './timemap.js';
 
 // 模型與各精度的實際檔案大小（MB，[encoder, decoder]，取自 Hugging Face）
@@ -67,7 +68,6 @@ export const ASR_LANGS = [
 ];
 
 const SR = 16000;
-let worker = null;
 let jobId = 0;
 
 // 取出片段實際用到的那段聲音，轉成 16kHz 單聲道
@@ -91,32 +91,41 @@ async function decodeClipAudio(clip) {
   return out;
 }
 
+// Whisper Worker：辨識完閒置 2 分鐘就關掉，釋放模型占用的記憶體（大模型可達 1 GB）
+const asrWorker = idleWorker(() => new Worker(new URL('./asr.worker.js', import.meta.url), { type: 'module' }));
 function runWorker(payload, onStatus) {
-  worker ||= new Worker(new URL('./asr.worker.js', import.meta.url), { type: 'module' });
+  const worker = asrWorker.begin();
   const id = ++jobId;
   return new Promise((resolve, reject) => {
+    const finish = () => {
+      worker.removeEventListener('message', onMsg);
+      worker.removeEventListener('error', onErr);
+    };
     const onMsg = (e) => {
       const d = e.data;
       if (d.type === 'download') return onStatus({ text: '下載模型中…', progress: d.loaded / d.total });
       if (d.id !== id) return;
       if (d.type === 'status') onStatus({ text: d.text });
       else {
-        worker.removeEventListener('message', onMsg);
+        finish();
+        asrWorker.end();
         if (d.type === 'done') resolve(d.chunks);
         else reject(new Error(d.message));
       }
     };
     const onErr = (e) => {
-      worker?.removeEventListener('message', onMsg);
-      worker?.terminate();
-      worker = null; // 下次重新建立
+      finish();
+      asrWorker.kill(); // 下次重新建立
+      asrWorker.end();
       reject(new Error(e?.message || '背景執行緒載入失敗，請重新整理頁面'));
     };
-    worker.addEventListener('error', onErr, { once: true });
+    worker.addEventListener('error', onErr);
     worker.addEventListener('message', onMsg);
     worker.postMessage({ id, ...payload });
   });
 }
+// 顯示卡加速失敗過的模型，之後直接用 CPU，不必每次先失敗一次再重試
+const gpuFailed = new Set();
 
 let converter = null;
 async function toTraditional(texts) {
@@ -135,13 +144,14 @@ export async function transcribe(clip, { model: modelId, language, traditional }
   if (total < 0.3) throw new Error('片段太短，無法辨識');
   const dev = await detectDevice();
   const model = MODELS.find((m) => m.id === modelId) || MODELS[1];
-  const plan = modelPlan(model, dev);
+  const plan = modelPlan(model, dev, gpuFailed.has(model.id));
   let chunks;
   try {
     chunks = await runWorker({ model: model.id, device: plan.device, dtype: plan.dtype, audio, language }, onStatus);
   } catch (e) {
     if (plan.device !== 'webgpu') throw e;
     console.warn('WebGPU 失敗，改用 WASM', e);
+    gpuFailed.add(model.id);
     onStatus({ text: '顯示卡加速失敗，改用 CPU 重試…' });
     const cpu = modelPlan(model, dev, true);
     chunks = await runWorker({ model: model.id, device: cpu.device, dtype: cpu.dtype, audio, language }, onStatus);

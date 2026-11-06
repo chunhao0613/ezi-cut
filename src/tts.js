@@ -1,4 +1,5 @@
 // 文字轉語音：英文用 Kokoro（高品質），中文與其他語言用 Piper，全部在本機合成
+import { idleRelease } from './idle.js';
 export const VOICES = [
   { id: 'piper:zh_CN-huayan-medium', name: '中文女聲・華研', lang: 'zh', note: 'Piper，約 60 MB' },
   { id: 'kokoro:af_heart', name: '英文女聲・Heart', lang: 'en', note: 'Kokoro，約 90 MB（各英文聲音共用）' },
@@ -30,7 +31,20 @@ export function wavBlob(pcm, sr) {
 }
 
 let kokoro = null;
+// Kokoro 在主執行緒，閒置 2 分鐘後釋放模型（約 90 MB 加上推論記憶體）
+const kokoroIdle = idleRelease(() => {
+  kokoro?.model?.dispose?.();
+  kokoro = null;
+});
 async function kokoroSay(text, voice, speed, onStatus) {
+  kokoroIdle.hold();
+  try {
+    return await kokoroRun(text, voice, speed, onStatus);
+  } finally {
+    kokoroIdle.touch();
+  }
+}
+async function kokoroRun(text, voice, speed, onStatus) {
   if (!kokoro) {
     const { KokoroTTS } = await import('kokoro-js');
     kokoro = await KokoroTTS.from_pretrained('onnx-community/Kokoro-82M-v1.0-ONNX', {
