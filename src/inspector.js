@@ -10,6 +10,8 @@ import { analyzeBeats, beatSync, findSilences, removeSilences, restoreVoice } fr
 import { GRADE_DEFAULT, curveTable, BUILTIN_LUTS } from './grade.js';
 import { importFiles } from './media.js';
 import { VOICES, ttsPrefs } from './tts.js';
+import { icon } from './icons.js';
+import { stickerDef, stickerSVG, hasLabel, usesColor1, usesColor2, STICKER_LOOPS } from './stickers.js';
 
 let freezeDur = 2;
 
@@ -156,8 +158,8 @@ export function initInspector(api) {
       ),
       c.type === 'video' && group('影片工具',
         h('div', { class: 'tool-row' },
-          h('button', { onclick: () => api.reverse(c) }, c.reversed ? '⇆ 取消倒放' : '⇆ 倒放'),
-          h('button', { onclick: () => api.freeze(c, freezeDur) }, '⏸ 在播放頭定格'),
+          h('button', { onclick: () => api.reverse(c) }, icon('reverse'), c.reversed ? '取消倒放' : '倒放'),
+          h('button', { onclick: () => api.freeze(c, freezeDur) }, icon('freeze'), '在播放頭定格'),
           (() => {
             const s = h('select', { title: '定格長度' }, [1, 2, 3, 5].map((v) => h('option', { value: v }, `${v} 秒`)));
             s.value = String(freezeDur);
@@ -416,7 +418,7 @@ export function initInspector(api) {
       h('div', { class: 'row' }, h('label', {}, '追蹤影片'), sel),
       slider('追蹤框 px', { min: 30, max: 400, get: () => trackOpts.size, set: (v) => (trackOpts.size = v), after: () => {} }),
       h('div', { class: 'tool-row' },
-        h('button', { class: 'primary', onclick: () => api.track(c, trackOpts.video, trackOpts.size) }, '⌖ 開始追蹤'),
+        h('button', { class: 'primary', onclick: () => api.track(c, trackOpts.video, trackOpts.size) }, icon('target'), '開始追蹤'),
         h('button', { onclick: () => {
           checkpoint();
           const lt = clamp(store.time - c.start, 0, c.duration);
@@ -468,7 +470,7 @@ export function initInspector(api) {
       slider('降噪強度 %', { min: 0, max: 100, get: () => voiceOpts.strength * 100, set: (v) => (voiceOpts.strength = v / 100), after: () => {} }),
       check('人聲 EQ 與壓縮（更清楚、更飽滿）', () => voiceOpts.eq, (v) => (voiceOpts.eq = v)),
       check('音量標準化', () => voiceOpts.norm, (v) => (voiceOpts.norm = v)),
-      h('div', { class: 'tool-row' }, h('button', { class: 'primary', onclick: () => api.enhance(c, { ...voiceOpts }) }, '✨ 增強人聲')),
+      h('div', { class: 'tool-row' }, h('button', { class: 'primary', onclick: () => api.enhance(c, { ...voiceOpts }) }, icon('sparkles'), '增強人聲')),
       h('div', { class: 'hint' }, c.type === 'video' ? '會把處理後的聲音放成獨立音軌，原影片自動靜音。全部在本機處理。' : '處理後可隨時還原。全部在本機處理。'),
     );
   }
@@ -488,7 +490,7 @@ export function initInspector(api) {
         status.textContent = '失敗：' + e.message;
       }
       build();
-    } }, b ? '重新偵測' : '♪ 偵測節拍');
+    } }, icon('music'), b ? '重新偵測' : '偵測節拍');
     if (!b) return group('節拍', detect, status);
     const visualTracks = store.project.tracks.filter((t) => store.project.clips.some((o) => o.trackId === t.id && (o.type === 'video' || o.type === 'image')));
     if (!visualTracks.some((t) => t.id === beatOpts.track)) beatOpts.track = visualTracks[0]?.id || null;
@@ -513,7 +515,7 @@ export function initInspector(api) {
           } catch (e) {
             toast(e.message);
           }
-        } }, '⚡ 一鍵卡點'),
+        } }, icon('sparkles'), '一鍵卡點'),
         detect),
     );
   }
@@ -526,7 +528,7 @@ export function initInspector(api) {
     const apply = h('button', { class: 'primary', disabled: true, onclick: () => {
       const sec = removeSilences(c, found);
       toast(`已剪掉 ${found.length} 段靜音，共 ${sec.toFixed(1)} 秒（可按 Ctrl+Z 復原）`);
-    } }, '✂ 剪掉這些靜音');
+    } }, icon('split'), '剪掉這些靜音');
     const analyze = () => {
       try {
         found = findSilences(c, silenceOpts);
@@ -698,14 +700,40 @@ export function initInspector(api) {
       group('朗讀（文字轉語音）',
         select('聲音', VOICES.map((v) => [v.id, v.name]), () => ttsPrefs.voice, (v) => (ttsPrefs.voice = v)),
         slider('語速 ×', { min: 0.6, max: 1.6, step: 0.05, get: () => ttsPrefs.speed, set: (v) => (ttsPrefs.speed = v), after: () => {} }),
-        h('div', { class: 'tool-row' }, h('button', { class: 'primary', onclick: () => api.speakText(c, ttsPrefs.voice, ttsPrefs.speed) }, '🔊 念出這段文字')),
+        h('div', { class: 'tool-row' }, h('button', { class: 'primary', onclick: () => api.speakText(c, ttsPrefs.voice, ttsPrefs.speed) }, icon('speaker'), '念出這段文字')),
         h('div', { class: 'hint' }, '在本機合成語音，放在同一時間點的「配音」軌。中文用 Piper，英文用 Kokoro；第一次使用會下載語音模型。'),
       ),
     ];
   }
 
+  function stickerTab(c) {
+    const s = c.shape;
+    const def = stickerDef(s.sticker);
+    if (!def) return [group('貼圖', h('div', { class: 'hint' }, '找不到這張貼圖的定義。'))];
+    const aspect = def.vb[1] / def.vb[0];
+    let labelIn = null;
+    if (hasLabel(def)) {
+      labelIn = h('input', { value: s.label ?? '', maxlength: 24, spellcheck: false });
+      labelIn.addEventListener('input', () => { begin(); s.label = labelIn.value; emit('props'); });
+      labelIn.addEventListener('change', end);
+    }
+    return [
+      group('貼圖',
+        h('div', { class: 'sticker-head' }, h('span', { class: 'vs-art', html: stickerSVG(def) }), h('b', {}, def.name)),
+        labelIn && h('div', { class: 'row' }, h('label', {}, '文字'), labelIn),
+        usesColor1(def) && color('主色', () => s.color, (v) => (s.color = v)),
+        usesColor2(def) && color('輔色', () => s.color2, (v) => (s.color2 = v)),
+        slider('大小 px', { min: 40, max: Math.max(store.project.width, store.project.height) * 1.5, get: () => s.w, set: (v) => { s.w = Math.round(v); s.h = Math.round(v * aspect); } }),
+        select('循環動態', STICKER_LOOPS, () => s.loop || 'none', (v) => (s.loop = v)),
+        chips([['恢復預設顏色', () => { checkpoint(); s.color = def.c1 || '#ffffff'; s.color2 = def.c2 || '#ffffff'; emit('props'); build(); }]]),
+      ),
+      h('div', { class: 'hint' }, '循環動態會在整段時間內持續播放；進場 / 出場效果在「動畫」分頁設定。'),
+    ];
+  }
+
   function shapeTab(c) {
     const s = c.shape;
+    if (s.kind === 'sticker') return stickerTab(c);
     const S = (k, label, min, max) => slider(label, { min, max, get: () => s[k], set: (v) => (s[k] = v) });
     return [group('形狀',
       select('種類', [['rect', '矩形'], ['circle', '圓形 / 橢圓'], ['solid', '純色背景'], ['gradient', '漸層背景'], ['letterbox', '電影黑邊']], () => s.kind, (v) => { s.kind = v; emit('layout'); build(); }),
@@ -730,15 +758,15 @@ export function initInspector(api) {
       build();
     });
     return h('div', { class: 'insp-head' },
-      h('div', { class: 'insp-title' }, h('span', { class: `dot t-${c.type}` }), TYPE_NAME[c.type], h('span', { class: 'dim ellipsis' }, m ? ` · ${m.name}` : '')),
+      h('div', { class: 'insp-title' }, h('span', { class: `dot t-${c.type}` }), c.shape?.kind === 'sticker' ? '貼圖' : TYPE_NAME[c.type], h('span', { class: 'dim ellipsis' }, m ? ` · ${m.name}` : '')),
       h('div', { class: 'insp-meta' },
         h('span', {}, `開始 ${fmtTime(c.start)}`),
         h('label', {}, '時長 ', dur, ' 秒')),
       h('div', { class: 'insp-actions' },
-        h('button', { onclick: () => api.split() }, '✂ 分割'),
-        h('button', { onclick: () => api.duplicate() }, '⧉ 複製'),
-        c.type === 'video' && h('button', { onclick: () => api.detach() }, '🎵 分離音訊'),
-        h('button', { class: 'danger', onclick: () => api.remove() }, '🗑 刪除')),
+        h('button', { onclick: () => api.split(), title: '在播放頭分割 (S)' }, icon('split'), '分割'),
+        h('button', { onclick: () => api.duplicate(), title: '複製一份 (Ctrl+D)' }, icon('copy'), '複製'),
+        c.type === 'video' && h('button', { onclick: () => api.detach() }, icon('music'), '分離音訊'),
+        h('button', { class: 'danger', onclick: () => api.remove(), title: '刪除 (Delete)' }, icon('trash'), '刪除')),
     );
   }
 
@@ -751,8 +779,8 @@ export function initInspector(api) {
       emit('project');
     };
     root.append(
-      h('div', { class: 'insp-head' }, h('div', { class: 'insp-title' }, '專案設定'), h('div', { class: 'dim' }, '在時間軸點選片段即可編輯它的屬性')),
-      group('畫面比例',
+      h('div', { class: 'insp-head' }, h('div', { class: 'insp-title' }, '專案設定'), h('div', { class: 'dim' }, '在時間軸或預覽畫面點選片段，就能編輯它的屬性')),
+      h('div', { class: 'insp-body' }, group('畫面比例',
         h('div', { class: 'aspect-grid' }, ASPECTS.map(([l, w, hgt]) => h('button', { class: `aspect${p.width === w && p.height === hgt ? ' on' : ''}`, onclick: () => setSize(w, hgt) },
           h('span', { class: 'box', style: `aspect-ratio:${w}/${hgt}` }), l))),
         h('div', { class: 'dim' }, `目前 ${p.width} × ${p.height}`),
@@ -763,15 +791,16 @@ export function initInspector(api) {
       ),
       group('專案檔',
         h('div', { class: 'tool-row' },
-          h('button', { onclick: () => api.exportProject() }, '⬇ 匯出專案檔'),
-          h('button', { onclick: () => api.importProject() }, '📂 開啟專案檔')),
+          h('button', { onclick: () => api.exportProject() }, icon('export'), '匯出專案檔'),
+          h('button', { onclick: () => api.importProject() }, icon('folder'), '開啟專案檔')),
         h('div', { class: 'hint' }, '專案檔（.ezicut）包含時間軸與用到的所有素材、LUT，可以備份或換一台電腦繼續剪。'),
       ),
       group('快捷鍵', h('div', { class: 'keys' }, [
         ['空白鍵', '播放 / 暫停'], ['S', '在播放頭分割'], ['Delete', '刪除片段'], ['Ctrl+Z / Ctrl+Shift+Z', '復原 / 重做'],
         ['Ctrl+D', '複製片段'], ['Ctrl+C / Ctrl+V', '複製 / 貼上'], ['← →', '前後一格（Shift = 1 秒）'],
-        ['Home / End', '開頭 / 結尾'], ['+ / -', '時間軸縮放'], ['Ctrl+滾輪', '時間軸縮放'], ['Esc', '取消選取'],
+        ['Ctrl+B', '在播放頭分割'], ['右鍵', '片段選單'], ['Home / End', '開頭 / 結尾'], ['+ / -', '時間軸縮放'], ['Ctrl+滾輪', '時間軸縮放'], ['Esc', '取消選取'],
       ].map(([k, d]) => h('div', { class: 'key' }, h('kbd', {}, k), h('span', {}, d))))),
+      ),
     );
   }
 
@@ -784,7 +813,8 @@ export function initInspector(api) {
     let tab = tabFor[c.type];
     if (!tabs.some(([id]) => id === tab)) tab = tabs[0][0];
     root.append(header(c));
-    root.append(h('div', { class: 'insp-tabs' }, tabs.map(([id, l]) => h('button', { class: `insp-tab${id === tab ? ' on' : ''}`, onclick: () => { tabFor[c.type] = id; build(); } }, l))));
+    const isSticker = c.shape?.kind === 'sticker';
+    root.append(h('div', { class: 'insp-tabs' }, tabs.map(([id, l]) => h('button', { class: `insp-tab${id === tab ? ' on' : ''}`, onclick: () => { tabFor[c.type] = id; build(); } }, isSticker && id === 'shape' ? '貼圖' : l))));
     const content = { frame: frameTab, color: colorTab, fx: fxTab, mask: maskTab, anim: animTab, audio: audioTab, text: textTab, shape: shapeTab }[tab](c);
     root.append(h('div', { class: 'insp-body' }, content.flat()));
     if (c.type === 'video' && tab === 'frame') root.querySelector('.insp-body').append(speedGroup(c));

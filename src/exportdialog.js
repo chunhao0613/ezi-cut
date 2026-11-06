@@ -260,6 +260,7 @@ export async function openExportDialog({ pause, download, setExporting }) {
         download(res.blob, res.ext);
         const len = r[1] - r[0];
         toast(`匯出完成：${fmtMB(res.blob.size)}，花 ${res.seconds.toFixed(1)} 秒${st.kind === 'still' ? '' : `（${(len / res.seconds).toFixed(1)}× 即時速度）`}`);
+        if (res.audioFailures?.length) setTimeout(() => toast(`注意：${res.audioFailures.join('、')} 的聲音無法解碼，匯出的檔案裡沒有它的聲音`), 2600);
       } else toast('已取消匯出');
     } catch (e) {
       console.error(e);

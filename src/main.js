@@ -14,6 +14,10 @@ import { trackObject } from './track.js';
 import { loadMatte } from './renderer.js';
 import { TEXT_PRESETS, STICKERS, SHAPE_PRESETS, FILTER_PRESETS } from './effects.js';
 import { $, h, toast, fmtTime, debounce, openModal } from './ui.js';
+import { stickerDef, stickerShape } from './stickers.js';
+import { hydrateIcons, setIcon } from './icons.js';
+
+hydrateIcons();
 
 // 匯出用的函式庫（Mediabunny）只在按下匯出時才載入，讓首次開啟網站更快
 const canFastExport = () => typeof VideoEncoder !== 'undefined' && typeof AudioEncoder !== 'undefined';
@@ -50,7 +54,7 @@ function pause() {
   emit('play');
 }
 const togglePlay = () => (store.playing ? pause() : play());
-on('play', () => ($('btnPlay').textContent = store.playing ? '❚❚' : '▶'));
+on('play', () => setIcon($('btnPlay'), store.playing ? 'pause' : 'play'));
 
 // ---------- 編輯動作 ----------
 function adaptProject(w, hgt) {
@@ -75,6 +79,10 @@ function presetClip(kind, i) {
     return makeClip('text', { duration: 3, text: p.text, transform: p.transform || {}, transIn: p.transIn || {}, transOut: p.transOut || {} });
   }
   if (kind === 'sticker') return makeClip('text', { duration: 3, text: { content: STICKERS[i], size: 220 }, transIn: { type: 'bounce', dur: 0.4 } });
+  if (kind === 'vsticker') {
+    const def = stickerDef(i);
+    return makeClip('shape', { duration: 3, shape: stickerShape(def, store.project.width), transIn: { type: def.loop === 'draw' ? 'none' : 'bounce', dur: 0.4 } });
+  }
   const p = SHAPE_PRESETS[i];
   return makeClip('shape', { duration: 4, shape: p.shape, transform: p.transform || {} });
 }
@@ -171,6 +179,7 @@ function paste() {
   checkpoint();
   const c = structuredClone(clipboard);
   c.id = uid();
+  c.xfade = null;
   c.start = store.time;
   placeClip(c, clipboard.trackId);
   store.selection = c.id;
@@ -187,7 +196,10 @@ function doRedo() {
 }
 
 // ---------- 初始化各區塊 ----------
-const timeline = initTimeline({ seek, onDrop: handleDrop });
+const timeline = initTimeline({
+  seek, onDrop: handleDrop,
+  actions: { split, duplicate, copy, paste, remove, detach, canPaste: () => !!clipboard, addTrack: () => { checkpoint(); addTrack(0); emit('project'); } },
+});
 initLibrary({
   addMediaClip, addPreset, applyFilterPreset, applyTransition, seek, select,
   speakCaptions: (list, voice, speed) => busyTask('字幕配音', async (progress) => {
@@ -199,7 +211,7 @@ initInspector({
   split, duplicate, remove, detach, applyFilterPreset, reverse: doReverse, freeze: doFreeze,
   loadMatte: () => {
     toast('正在載入 AI 去背模型…');
-    loadMatte().then((m) => m && toast('AI 去背已就緒'));
+    loadMatte({ force: true }).then((m) => toast(m ? 'AI 去背已就緒' : 'AI 去背模型下載失敗，請檢查網路後再勾選一次'));
   },
   track: (target, videoId, size) => {
     const video = getClip(videoId);
@@ -236,7 +248,10 @@ initInspector({
 });
 
 // 長時間的處理：顯示進度，期間鎖住操作
+let busy = false;
 async function busyTask(title, fn) {
+  if (busy) return toast('還有一項處理正在進行，請稍候');
+  busy = true;
   pause();
   const bar = h('div', { class: 'bar' });
   const label = h('div', { class: 'dim' }, '處理中…');
@@ -250,6 +265,7 @@ async function busyTask(title, fn) {
     console.error(e);
     toast(`${title}失敗：${e.message}`);
   } finally {
+    busy = false;
     close();
   }
 }
@@ -280,7 +296,7 @@ async function handleDrop(dt, t, trackId) {
     if (m) addMediaClip(m, t, trackId);
   } else if (preset) {
     const [kind, i] = preset.split(':');
-    addPreset(kind, +i, t, trackId);
+    addPreset(kind, kind === 'vsticker' ? i : +i, t, trackId);
   } else if (dt.files?.length) {
     const list = (await importFiles(dt.files)).filter((m) => m?.type);
     let at = t;
@@ -767,7 +783,7 @@ window.addEventListener('pointerdown', () => renderer.ensureAudio(), { once: tru
 // ---------- 鍵盤 ----------
 window.addEventListener('keydown', (e) => {
   if (e.target.matches?.('textarea, select, input:not([type=range]):not([type=checkbox]):not([type=color])')) return;
-  if (exporting) return;
+  if (exporting || busy) return; // 長時間處理期間不接受編輯快捷鍵，避免改到處理中的片段
   const k = e.key.toLowerCase();
   const mod = e.ctrlKey || e.metaKey;
   const isRange = !!e.target.matches?.('input[type=range]');
@@ -799,7 +815,7 @@ const save = debounce(() => {
     console.warn('自動儲存失敗', e);
   }
 }, 500);
-on('*', (evt) => evt !== 'select' && evt !== 'play' && evt !== 'media' && save());
+on('*', (evt) => evt !== 'select' && evt !== 'play' && evt !== 'media' && evt !== 'time' && save());
 
 if (import.meta.env.DEV) window.__nova = { store, emit, renderer };
 

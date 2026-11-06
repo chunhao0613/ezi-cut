@@ -1,4 +1,5 @@
 // 畫面合成：把時間 t 的所有片段畫到 canvas 上，並同步影音元素
+import { drawSticker } from './stickers.js';
 import { store, getProp, getTrack } from './state.js';
 import { clipMods, filterString } from './effects.js';
 import { srcAt, speedAt } from './timemap.js';
@@ -7,14 +8,22 @@ import { GradePass, gradeActive, filtersActive, BUILTIN_LUTS } from './grade.js'
 // AI 去背模組只在第一次用到時才載入（含模型下載）
 let matteMod = null;
 let matteLoading = null;
-export function loadMatte() {
+let matteFailedAt = 0;
+export let matteError = null;
+/** 載入 AI 去背模型；失敗時回傳 null，matteError 記錄原因，畫面迴圈 15 秒內不再自動重試（避免每格都重新下載） */
+export function loadMatte({ force = false } = {}) {
+  if (!matteMod && !matteLoading && !force && performance.now() - matteFailedAt < 15000) return Promise.resolve(null);
   return (matteLoading ||= import('./matte.js').then(async (m) => {
     await m.ensure();
     matteMod = m;
+    matteError = null;
     return m;
   }).catch((e) => {
     console.warn('AI 去背載入失敗', e);
+    matteError = e;
+    matteFailedAt = performance.now();
     matteLoading = null;
+    return null;
   }));
 }
 
@@ -128,11 +137,25 @@ function makeGrain() {
   });
 }
 
+// 中文字型是依字元範圍分片下載的，要把實際文字一起交給 fonts.load 才會載入需要的分片
 const requestedFonts = new Set();
-function ensureFont(spec) {
-  if (requestedFonts.has(spec)) return;
-  requestedFonts.add(spec);
-  document.fonts?.load(spec).catch(() => {});
+function ensureFont(spec, text = '') {
+  const key = `${spec}|${text}`;
+  if (requestedFonts.has(key)) return;
+  requestedFonts.add(key);
+  document.fonts?.load(spec, text || ' ').catch(() => {});
+}
+export const textFontSpec = (s) => `${s.italic ? 'italic ' : ''}${s.weight} ${s.size}px "${s.font}", "Noto Sans TC", sans-serif`;
+/** 匯出前先把所有文字與貼圖用到的字型載完（最多等 8 秒），避免前幾格用到備用字型 */
+export async function preloadFonts(clips) {
+  if (!document.fonts) return;
+  const jobs = [];
+  for (const c of clips) {
+    if (c.type === 'text' && c.text?.content) jobs.push(document.fonts.load(textFontSpec(c.text), c.text.content));
+    if (c.type === 'shape' && c.shape?.kind === 'sticker') jobs.push(document.fonts.load('900 40px "Noto Sans TC"', c.shape.label || 'A'));
+  }
+  if (!jobs.length) return;
+  await Promise.race([Promise.allSettled(jobs), new Promise((r) => setTimeout(r, 8000))]);
 }
 
 export class Renderer {
@@ -252,11 +275,12 @@ export class Renderer {
       if (playing) {
         if (el.paused) {
           if (Math.abs(el.currentTime - src) > 0.05) el.currentTime = src;
-          el.play().catch(() => {});
+          // 已播完的元素再呼叫 play() 會跳回開頭，造成尾端重播
+          if (!el.ended && !(el.duration && src >= el.duration - 0.05)) el.play().catch(() => {});
         } else if (!el.seeking && Math.abs(el.currentTime - src) > 0.3) el.currentTime = src;
       } else {
         if (!el.paused) el.pause();
-        if (!el.seeking && Math.abs(el.currentTime - src) > 0.02) el.currentTime = src;
+        if (!el.seeking && Math.abs(el.currentTime - src) > 0.25 / (store.project.fps || 30)) el.currentTime = src;
       }
     }
     for (const id of [...this.players.keys()]) if (!alive.has(id)) this.dropPlayer(id);
@@ -381,9 +405,9 @@ export class Renderer {
       }
       L.drawImage(src, cr.l * srcW, cr.t * srcH, cropW * srcW, cropH * srcH, -bw / 2, -bh / 2, bw, bh);
     } else if (c.type === 'text') {
-      ({ w: bw, h: bh } = drawText(L, c, local, t));
+      ({ w: bw, h: bh } = drawText(L, c, local + (c.animOffset || 0), t));
     } else if (c.type === 'shape') {
-      ({ w: bw, h: bh } = drawShape(L, c, W, H));
+      ({ w: bw, h: bh } = drawShape(L, c, W, H, local + (c.animOffset || 0)));
     }
     if (c.mask && c.mask.type !== 'none') this.applyMask(c.mask, bw, bh, W, H);
     L.restore();
@@ -415,6 +439,8 @@ export class Renderer {
   }
 
   grader() {
+    // 顯示卡回收了 WebGL（分頁在背景、內容太多）時重新建立，不然調色過的片段會變空白
+    if (this.grade?.gl.isContextLost()) this.grade = null;
     if (this.grade) return this.grade;
     if (this.noGrade) return null;
     try {
@@ -424,6 +450,13 @@ export class Renderer {
       this.noGrade = true;
     }
     return this.grade;
+  }
+
+  /** 釋放 WebGL 調色資源（匯出用的暫時算圖器結束時呼叫） */
+  dispose() {
+    this.grade?.gl.getExtension('WEBGL_lose_context')?.loseContext();
+    this.grade = null;
+    this.matteCache.clear();
   }
 
   // 遮罩：在片段自己的座標系裡畫出形狀（含羽化），只保留形狀內（或外）的畫面
@@ -461,6 +494,8 @@ export class Renderer {
     const key = c.type === 'image' ? `img:${c.mediaId}` : src instanceof HTMLVideoElement ? src.currentTime.toFixed(3) : t.toFixed(3);
     let e = this.matteCache.get(c.id);
     if (e && e.key === key && e.sig === JSON.stringify(c.aiMatte)) return e.out;
+    // 跳轉中的影片 currentTime 已是新時間，但畫面還是舊的：先沿用上一張結果，等新畫面解碼好再算
+    if (src instanceof HTMLVideoElement && (src.seeking || src.readyState < 2)) return e?.out?.width ? e.out : src;
     if (!e) {
       e = { out: document.createElement('canvas'), mask: document.createElement('canvas'), small: document.createElement('canvas') };
       this.matteCache.set(c.id, e);
@@ -637,8 +672,8 @@ function roundRect(L, x, y, w, h, r) {
 
 export function drawText(L, c, local, t) {
   const s = c.text;
-  const font = `${s.italic ? 'italic ' : ''}${s.weight} ${s.size}px "${s.font}", "Noto Sans TC", sans-serif`;
-  ensureFont(font);
+  const font = textFontSpec(s);
+  ensureFont(font, s.content);
   L.font = font;
   L.textBaseline = 'middle';
   L.textAlign = 'left';
@@ -724,8 +759,9 @@ function drawRun(L, s, text, x, y, color) {
   L.shadowBlur = 0;
 }
 
-function drawShape(L, c, W, H) {
+function drawShape(L, c, W, H, local = 0) {
   const s = c.shape;
+  if (s.kind === 'sticker') return drawSticker(L, s, local);
   if (s.kind === 'solid' || s.kind === 'gradient') {
     if (s.kind === 'gradient') {
       const g = L.createLinearGradient(-W / 2, -H / 2, W / 2, H / 2);

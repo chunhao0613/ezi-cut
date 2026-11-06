@@ -9,16 +9,18 @@ import { LANGS } from './translate.js';
 import { VOICES, ttsPrefs } from './tts.js';
 import { ASR_LANGS, rankModels, transcribe, translateCaptions, translationClips, translationFor, addCaptions, captionClips, applyStyleToAll, toSRT, parseSRT } from './captions.js';
 import { removeMedia } from './media.js';
+import { STICKER_CATS, STICKER_DEFS, stickerSVG } from './stickers.js';
+import { icon } from './icons.js';
 
 const TABS = [
-  ['media', '📁', '媒體'],
-  ['caption', 'CC', '字幕'],
-  ['text', 'T', '文字'],
-  ['template', '🧩', '範本'],
-  ['sticker', '😀', '貼圖'],
-  ['element', '◼', '素材'],
-  ['filter', '🎨', '濾鏡'],
-  ['transition', '✨', '轉場'],
+  ['media', 'media', '媒體'],
+  ['caption', 'caption', '字幕'],
+  ['text', 'text', '文字'],
+  ['template', 'template', '範本'],
+  ['sticker', 'sticker', '貼圖'],
+  ['element', 'shape', '素材'],
+  ['filter', 'filter', '濾鏡'],
+  ['transition', 'transition', '轉場'],
 ];
 
 export function initLibrary(api) {
@@ -28,9 +30,9 @@ export function initLibrary(api) {
 
   function renderTabs() {
     tabsEl.innerHTML = '';
-    for (const [id, icon, label] of TABS) {
+    for (const [id, ic, label] of TABS) {
       tabsEl.append(h('button', { class: `lib-tab${id === tab ? ' on' : ''}`, onclick: () => { tab = id; renderTabs(); render(); } },
-        h('span', { class: 'i' }, icon), h('span', {}, label)));
+        icon(ic, 'i'), h('span', {}, label)));
     }
   }
 
@@ -125,7 +127,7 @@ export function initLibrary(api) {
       }
       asr.busy = false;
       render();
-    } }, asr.busy ? '辨識中…' : '✨ 產生 AI 字幕');
+    } }, icon('sparkles'), asr.busy ? '辨識中…' : '產生 AI 字幕');
 
     body.append(
       h('div', { class: 'section-title' }, 'AI 自動字幕'),
@@ -190,7 +192,7 @@ export function initLibrary(api) {
           }
           trOpts.busy = false;
           render();
-        } }, trOpts.busy ? '翻譯中…' : '🌐 翻譯字幕'),
+        } }, icon('globe'), trOpts.busy ? '翻譯中…' : '翻譯字幕'),
         h('div', { class: 'progress' }, trBar),
         trStatus),
       h('div', { class: 'hint' }, 'Chrome 會用瀏覽器內建的裝置端翻譯；其他瀏覽器改用 Opus-MT 模型在本機翻譯（每個語言組合約 110 MB，第一次下載後快取）。'),
@@ -219,7 +221,7 @@ export function initLibrary(api) {
         voiceNote,
         h('label', {}, '語速', h('div', { class: 'tool-row' }, speedIn, speedLbl)),
         h('label', {}, '念哪一軌', ttsSrc),
-        h('button', { class: 'wide', disabled: !list.length, onclick: () => api.speakCaptions(ttsSrc.value === 'tr' ? trList : list, ttsPrefs.voice, ttsPrefs.speed) }, '🔊 幫字幕配音')),
+        h('button', { class: 'wide', disabled: !list.length, onclick: () => api.speakCaptions(ttsSrc.value === 'tr' ? trList : list, ttsPrefs.voice, ttsPrefs.speed) }, icon('speaker'), '幫字幕配音')),
       h('div', { class: 'hint' }, '配音放在「配音」軌；某句念不完會自動加快（最多 1.6 倍）避免蓋到下一句。'),
     );
 
@@ -277,7 +279,8 @@ export function initLibrary(api) {
   function media() {
     body.append(
       h('button', { class: 'import-btn', onclick: () => $('fileInput').click() },
-        h('div', { class: 'big' }, '＋ 匯入媒體'),
+        icon('upload', 'import-ic'),
+        h('div', { class: 'big' }, '匯入媒體'),
         h('div', { class: 'dim' }, '影片 / 音樂 / 圖片，也可以直接拖曳到視窗')),
     );
     const list = [...store.media.values()];
@@ -315,12 +318,12 @@ export function initLibrary(api) {
         `font-family:"${t.font || 'Noto Sans TC'}"`,
         `font-weight:${t.weight || 700}`,
         t.gradient ? `background:linear-gradient(${t.color},${t.color2});-webkit-background-clip:text;color:transparent` : `color:${t.color || '#fff'}`,
-        t.stroke ? `-webkit-text-stroke:${Math.min(2, t.stroke / 3)}px ${t.strokeColor}` : '',
+        t.stroke ? `-webkit-text-stroke:${Math.min(4, Math.max(1.5, t.stroke / 2.5))}px ${t.strokeColor};paint-order:stroke fill` : '',
         t.shadow ? `text-shadow:0 0 ${t.shadow / 4}px ${t.shadowColor || '#000'}` : '',
         t.bg ? `background:${t.bgColor || '#000'};padding:2px 6px;border-radius:4px` : '',
       ].join(';');
-      grid.append(h('div', { class: 'preset-card', draggable: true, ondragstart: dragData('text/x-preset', `text:${i}`), onclick: () => api.addPreset('text', i) },
-        h('div', { class: 'pv', style }, p.name), h('div', { class: 'name' }, p.name)));
+      grid.append(h('div', { class: 'preset-card text-card', draggable: true, ondragstart: dragData('text/x-preset', `text:${i}`), onclick: () => api.addPreset('text', i) },
+        h('div', { class: 'pv' }, h('span', { style }, p.name)), h('div', { class: 'name' }, p.name)));
     });
     body.append(grid);
   }
@@ -343,7 +346,7 @@ export function initLibrary(api) {
   }
 
   function template() {
-    const tplFile = h('input', { type: 'file', accept: '.json,application/json', hidden: true, onchange: async () => {
+    const tplFile = h('input', { type: 'file', accept: '.ezitpl,.json,application/json', hidden: true, onchange: async () => {
       const f = tplFile.files[0];
       if (!f) return;
       try {
@@ -359,7 +362,7 @@ export function initLibrary(api) {
       h('div', { class: 'preset-grid' }, BUILTIN_TEMPLATES.map((t) => tplCard(t, { builtin: true }))),
       h('div', { class: 'section-title' }, `我的範本（${store.templates.size}）`),
       h('div', { class: 'tool-row' },
-        h('button', { class: 'primary', disabled: !store.project.clips.length, onclick: openSaveTemplate }, '＋ 把目前專案存成範本'),
+        h('button', { class: 'primary', disabled: !store.project.clips.length, onclick: openSaveTemplate }, icon('plus'), '把目前專案存成範本'),
         h('button', { onclick: () => tplFile.click() }, '匯入範本檔'),
         tplFile),
       store.templates.size ? h('div', { class: 'preset-grid' }, [...store.templates.values()].sort((a, b) => b.created - a.created).map((t) => tplCard(t, { builtin: false }))) : h('div', { class: 'hint' }, '還沒有自己的範本。把做好的影片存成範本，下次換素材就能重複使用，也能匯出分享給朋友。'),
@@ -443,16 +446,38 @@ export function initLibrary(api) {
       const t = await saveTemplate(name.value.trim() || '我的範本', [...chosen]);
       close();
       toast(`已存成範本「${t.name}」`);
-      const a = h('a', { href: URL.createObjectURL(await exportTemplateFile(t)), download: `${t.name}.ezicut.json` });
-      if (confirm('要同時下載範本檔，方便分享給朋友嗎？')) a.click();
+      if (confirm('要同時下載範本檔，方便分享給朋友嗎？')) {
+        const a = h('a', { href: URL.createObjectURL(await exportTemplateFile(t)), download: `${t.name}.ezitpl` });
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(a.href), 60000);
+      }
     };
   }
 
+  let stickerCat = 'all';
   function sticker() {
-    body.append(h('div', { class: 'section-title' }, '表情貼圖（點一下加入）'));
-    const grid = h('div', { class: 'sticker-grid' });
-    STICKERS.forEach((s, i) => grid.append(h('button', { class: 'sticker', draggable: true, ondragstart: dragData('text/x-preset', `sticker:${i}`), onclick: () => api.addPreset('sticker', i) }, s)));
-    body.append(grid);
+    const cats = [['all', '全部'], ...STICKER_CATS.map((c) => [c.id, c.name]), ['emoji', 'Emoji']];
+    body.append(
+      h('div', { class: 'chips cat-chips' }, cats.map(([id, l]) => h('button', { class: `chip${id === stickerCat ? ' on' : ''}`, onclick: () => { stickerCat = id; render(); } }, l))),
+    );
+    if (stickerCat !== 'emoji') {
+      for (const cat of STICKER_CATS) {
+        if (stickerCat !== 'all' && stickerCat !== cat.id) continue;
+        const defs = STICKER_DEFS.filter((d) => d.cat === cat.id);
+        if (stickerCat === 'all') body.append(h('div', { class: 'section-title' }, cat.name));
+        body.append(h('div', { class: 'vsticker-grid' }, defs.map((d) => h('button', {
+          class: 'vsticker', title: `${d.name}（點一下加入，可拖到時間軸）`, draggable: true,
+          ondragstart: dragData('text/x-preset', `vsticker:${d.id}`), onclick: () => api.addPreset('vsticker', d.id),
+        }, h('span', { class: 'vs-art', html: stickerSVG(d) }), h('span', { class: 'vs-name' }, d.name)))));
+      }
+      body.append(h('div', { class: 'hint' }, '向量貼圖放大也不會糊；加入後可以在右側換顏色、改文字、設定循環動態。'));
+    }
+    if (stickerCat === 'all' || stickerCat === 'emoji') {
+      body.append(h('div', { class: 'section-title' }, 'Emoji 表情符號'));
+      const grid = h('div', { class: 'sticker-grid' });
+      STICKERS.forEach((s, i) => grid.append(h('button', { class: 'sticker', draggable: true, ondragstart: dragData('text/x-preset', `sticker:${i}`), onclick: () => api.addPreset('sticker', i) }, s)));
+      body.append(grid);
+    }
   }
 
   function element() {
@@ -487,21 +512,29 @@ export function initLibrary(api) {
   }
 
   function transition() {
-    body.append(h('div', { class: 'section-title' }, '套用到選取片段的入場 / 出場'));
-    const list = h('div', { class: 'trans-list' });
+    const c = selected();
+    const visual = c && c.type !== 'audio';
+    body.append(
+      h('div', { class: 'section-title' }, visual ? '套用到選取片段的入場 / 出場' : '先在時間軸選一個畫面片段'),
+      h('div', { class: 'hint' }, '游標移到卡片上可以預覽效果。兩段影片之間的轉場：點時間軸上接縫處的轉場按鈕。'),
+    );
+    const grid = h('div', { class: 'trans-grid' });
     for (const [id, label] of TRANSITIONS.slice(1)) {
-      list.append(h('div', { class: 'trans-item' },
-        h('span', { class: 'nm' }, label),
-        h('button', { onclick: () => api.applyTransition(id, 'in') }, '入場'),
-        h('button', { onclick: () => api.applyTransition(id, 'out') }, '出場'),
-        h('button', { onclick: () => api.applyTransition(id, 'both') }, '兩者')));
+      const on = (w) => visual && ((w === 'in' && c.transIn.type === id) || (w === 'out' && c.transOut.type === id));
+      grid.append(h('div', { class: 'trans-card' },
+        h('div', { class: 'tp' }, h('div', { class: 'tp-a' }, 'A'), h('div', { class: `tp-b tp-${id}` }, 'B')),
+        h('div', { class: 'trans-name' }, label),
+        h('div', { class: 'trans-acts' },
+          h('button', { class: on('in') ? 'on' : '', disabled: !visual, onclick: () => { api.applyTransition(id, 'in'); render(); } }, '入場'),
+          h('button', { class: on('out') ? 'on' : '', disabled: !visual, onclick: () => { api.applyTransition(id, 'out'); render(); } }, '出場'),
+          h('button', { disabled: !visual, onclick: () => { api.applyTransition(id, 'both'); render(); } }, '兩者'))));
     }
-    body.append(list, h('div', { class: 'hint' }, '小技巧：兩個片段在不同軌道上重疊，前一個設「出場淡出」、後一個設「入場淡入」，就是交叉溶接。'));
+    body.append(grid);
   }
 
   on('media', () => tab === 'media' && render());
   on('templates', () => tab === 'template' && render());
-  on('select', () => tab === 'filter' && render());
+  on('select', () => (tab === 'filter' || tab === 'transition') && render());
   const isTyping = () => document.activeElement?.closest?.('.cap-list');
   on('project', () => tab === 'caption' && !isTyping() && render());
   on('layout', () => tab === 'caption' && !isTyping() && render());

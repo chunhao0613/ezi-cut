@@ -7,7 +7,7 @@ import {
   QUALITY_LOW, QUALITY_MEDIUM, QUALITY_HIGH, QUALITY_VERY_HIGH,
 } from 'mediabunny';
 import { store, projectDuration, getTrack } from './state.js';
-import { Renderer, loadMatte } from './renderer.js';
+import { Renderer, loadMatte, preloadFonts } from './renderer.js';
 import { timeStretch } from './timestretch.js';
 import { srcAt, srcLength, hasCurve } from './timemap.js';
 
@@ -96,6 +96,8 @@ function audibleClips() {
 }
 
 // 用 OfflineAudioContext 把所有音訊混成一軌
+// 混音時解不開的音訊檔（名稱）；匯出完成時提醒使用者，不要默默少掉聲音
+let audioFailures = new Set();
 export async function mixAudio(dur, onStretch) {
   const SR = 48000;
   const ctx = new OfflineAudioContext(2, Math.max(1, Math.ceil(dur * SR)), SR);
@@ -105,7 +107,9 @@ export async function mixAudio(dur, onStretch) {
     if (!cache.has(m.id)) {
       try {
         cache.set(m.id, await ctx.decodeAudioData(await m.blob.arrayBuffer()));
-      } catch {
+      } catch (e) {
+        console.warn('混音時無法解碼', m.name, e);
+        audioFailures.add(m.name);
         cache.set(m.id, null);
       }
     }
@@ -223,9 +227,11 @@ class FrameRenderer {
     this.videoClips = store.project.clips.filter((c) => c.type === 'video');
   }
   async init(onProgress) {
+    onProgress?.(0, '載入字型…');
+    await preloadFonts(store.project.clips);
     if (store.project.clips.some((c) => c.aiMatte?.on)) {
       onProgress?.(0, '載入 AI 去背模型…');
-      await loadMatte();
+      if (!(await loadMatte({ force: true }))) throw new Error('AI 去背模型下載失敗，請檢查網路後再試（不然匯出的影片不會去背）');
     }
   }
   /** 畫出時間 t 的畫面，回傳輸出尺寸的畫布 */
@@ -250,6 +256,7 @@ class FrameRenderer {
   }
   close() {
     for (const cur of this.cursors.values()) cur?.close();
+    this.r.dispose();
   }
 }
 
@@ -333,14 +340,15 @@ async function exportGif(o, onProgress, signal) {
   ctx.canvas.height = o.height;
   const gif = GIFEncoder();
   const n = Math.max(1, Math.round((t1 - t0) * o.fps));
-  const delay = Math.round(1000 / o.fps);
+  // GIF 的延遲以 1/100 秒為單位；逐格累計誤差，總長度才會和影片一致（15 fps → 7、7、6 …）
+  const delayAt = (i) => (Math.round(((i + 1) * 100) / o.fps) - Math.round((i * 100) / o.fps)) * 10;
   try {
     for (let i = 0; i < n; i++) {
       if (signal?.aborted) return null;
       ctx.drawImage(await fr.frame(t0 + i / o.fps), 0, 0);
       const { data } = ctx.getImageData(0, 0, o.width, o.height);
       const palette = quantize(data, 256);
-      gif.writeFrame(applyPalette(data, palette), o.width, o.height, { palette, delay });
+      gif.writeFrame(applyPalette(data, palette), o.width, o.height, { palette, delay: delayAt(i) });
       if (i % 2 === 0) {
         onProgress(i / n, `製作 GIF… ${i}/${n} 格`);
         await pause();
@@ -397,10 +405,11 @@ async function exportStill(o) {
  */
 export async function exportMedia(o, onProgress = () => {}, signal) {
   await registerExtraEncoders();
+  audioFailures = new Set();
   const start = performance.now();
   const fn = { video: exportVideo, audio: exportAudio, gif: exportGif, images: exportImages, still: exportStill }[o.kind];
   const res = await fn(o, onProgress, signal);
-  return res && { ...res, seconds: (performance.now() - start) / 1000 };
+  return res && { ...res, seconds: (performance.now() - start) / 1000, audioFailures: [...audioFailures] };
 }
 
 /** 舊介面：整段專案匯出成影片 */

@@ -23,7 +23,10 @@ export function ensure() {
       console.warn('AI 去背改用 CPU', e);
       segmenter = await create('CPU');
     }
-  })());
+  })().catch((e) => {
+    loading = null; // 下載失敗時允許下次重試
+    throw e;
+  }));
 }
 export const ready = () => !!segmenter;
 

@@ -337,3 +337,107 @@ kbd { background: var(--panel3); border: 1px solid var(--line); border-bottom-wi
 .xp-body { display: flex; flex-direction: column; gap: 8px; }
 .xp-kinds { display: flex; flex-wrap: wrap; border-bottom: 1px solid var(--line); margin: 2px 0 4px; }
 .xp-kinds .insp-tab { flex: 1 1 auto; font-size: 12px; padding: 7px 6px; }
+
+/* 向量貼圖 */
+.cat-chips { margin-bottom: 10px; }
+.vsticker-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-bottom: 12px; }
+.vsticker { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 8px 4px 5px; background: var(--panel2); border-radius: 10px; white-space: normal; }
+.vsticker:hover { border-color: var(--acc); background: var(--panel3); }
+.vsticker:hover .vs-art { transform: scale(1.08) rotate(-3deg); }
+.vs-art { display: grid; place-items: center; width: 100%; height: 54px; transition: transform .15s; pointer-events: none; }
+.vs-art svg { width: 100%; height: 100%; overflow: visible; }
+.vs-name { font-size: 11px; color: var(--dim); }
+.sticker-head { display: flex; align-items: center; gap: 10px; }
+.sticker-head .vs-art { width: 64px; height: 44px; padding: 4px; background: var(--panel2); border-radius: 8px; }
+
+/* ===================== 圖示與按鈕整理 ===================== */
+.icon { display: inline-grid; place-items: center; width: 16px; height: 16px; flex: none; line-height: 0; }
+.icon svg { width: 100%; height: 100%; }
+button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+button.ghost { background: transparent; border-color: transparent; color: #c9cdd6; }
+button.ghost:hover { background: var(--panel3); border-color: var(--line); color: var(--text); }
+button.primary .icon { width: 15px; height: 15px; }
+.tb-sep { width: 1px; height: 20px; background: var(--line); margin: 0 4px; flex: none; }
+.topbar { gap: 4px; }
+.topbar button { height: 34px; }
+.topbar #btnExport { padding: 0 14px; margin-left: 6px; }
+.logo svg { width: 16px; height: 16px; }
+
+.lib-tab { gap: 3px; padding: 9px 0 7px; }
+.lib-tab .icon.i { width: 19px; height: 19px; }
+.lib-tab.on .icon { color: var(--acc); }
+.import-btn { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.import-btn .import-ic { width: 26px; height: 26px; color: var(--acc); }
+
+.transport button .icon { width: 18px; height: 18px; }
+.transport button { color: #c9cdd6; border-radius: 8px; }
+.transport button:hover { color: var(--text); }
+.transport .play .icon { width: 18px; height: 18px; }
+.transport .play { color: #0b0b10; }
+#btnPlay .icon { transform: translateX(1px); }
+
+.tl-toolbar { gap: 4px; }
+.tl-toolbar button { height: 28px; gap: 5px; }
+.tl-toolbar button .icon { width: 15px; height: 15px; }
+.tl-toolbar .icon-btn { width: 28px; padding: 0; }
+.toggle { display: inline-flex; align-items: center; gap: 5px; height: 28px; padding: 0 10px; border-radius: 7px; border: 1px solid var(--line); font-size: 12px; cursor: pointer; color: var(--dim); user-select: none; }
+.toggle input { display: none; }
+.toggle .icon { width: 15px; height: 15px; }
+.toggle:has(input:checked) { color: var(--acc); border-color: color-mix(in srgb, var(--acc) 60%, transparent); background: color-mix(in srgb, var(--acc) 10%, transparent); }
+
+.tl-head { gap: 4px; }
+.tl-head .ic { width: 24px; height: 22px; padding: 0; border-radius: 5px; color: var(--dim); opacity: 1; }
+.tl-head .ic .icon { width: 14px; height: 14px; }
+.tl-head .ic:hover { color: var(--text); }
+.tl-head .ic.on { color: #fbbf24; }
+
+.insp-actions button { gap: 4px; }
+.insp-actions .icon, .tool-row .icon, button.wide .icon { width: 14px; height: 14px; }
+.chip { display: inline-flex; }
+
+.mobile-nav button .icon { width: 22px; height: 22px; }
+
+/* 文字樣式預覽 */
+.text-card .pv { background: linear-gradient(135deg, #3b4252, #1e2230); font-size: 22px; }
+
+/* 轉場卡片：游標移上去播放預覽 */
+.trans-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.trans-card { background: var(--panel2); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.trans-card:hover { border-color: var(--acc); }
+.tp { position: relative; height: 58px; overflow: hidden; background: #0a0b0e; }
+.tp-a, .tp-b { position: absolute; inset: 0; display: grid; place-items: center; font-weight: 900; font-size: 18px; color: rgba(255,255,255,.85); }
+.tp-a { background: linear-gradient(135deg, #1d4ed8, #7c3aed); }
+.tp-b { background: linear-gradient(135deg, #f97316, #db2777); animation: 1.6s ease-out infinite paused; animation-delay: -.55s; }
+.trans-card:hover .tp-b { animation-play-state: running; }
+@media (hover: none) { .tp-b { animation-play-state: running; } }
+.trans-name { font-size: 12px; text-align: center; padding: 5px 4px 3px; }
+.trans-acts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 3px; padding: 0 5px 6px; }
+.trans-acts button { padding: 2px 0; font-size: 11px; }
+.trans-acts button.on { border-color: var(--acc); color: var(--acc); }
+.tp-fade { animation-name: tp-fade; } @keyframes tp-fade { 0% { opacity: 0 } 65%,100% { opacity: 1 } }
+.tp-slideL { animation-name: tp-slideL; } @keyframes tp-slideL { 0% { transform: translateX(-100%) } 65%,100% { transform: none } }
+.tp-slideR { animation-name: tp-slideR; } @keyframes tp-slideR { 0% { transform: translateX(100%) } 65%,100% { transform: none } }
+.tp-slideU { animation-name: tp-slideU; } @keyframes tp-slideU { 0% { transform: translateY(100%) } 65%,100% { transform: none } }
+.tp-slideD { animation-name: tp-slideD; } @keyframes tp-slideD { 0% { transform: translateY(-100%) } 65%,100% { transform: none } }
+.tp-zoomIn { animation-name: tp-zoomIn; } @keyframes tp-zoomIn { 0% { transform: scale(.3); opacity: 0 } 65%,100% { transform: none; opacity: 1 } }
+.tp-zoomOut { animation-name: tp-zoomOut; } @keyframes tp-zoomOut { 0% { transform: scale(1.8); opacity: 0 } 65%,100% { transform: none; opacity: 1 } }
+.tp-spin { animation-name: tp-spin; } @keyframes tp-spin { 0% { transform: rotate(-270deg) scale(0) } 65%,100% { transform: none } }
+.tp-bounce { animation-name: tp-bounce; } @keyframes tp-bounce { 0% { transform: scale(0) } 35% { transform: scale(1.15) } 50% { transform: scale(.94) } 65%,100% { transform: none } }
+.tp-blur { animation-name: tp-blur; } @keyframes tp-blur { 0% { filter: blur(10px); opacity: 0 } 65%,100% { filter: none; opacity: 1 } }
+.tp-wipeL { animation-name: tp-wipeL; } @keyframes tp-wipeL { 0% { clip-path: inset(0 100% 0 0) } 65%,100% { clip-path: inset(0) } }
+.tp-wipeR { animation-name: tp-wipeR; } @keyframes tp-wipeR { 0% { clip-path: inset(0 0 0 100%) } 65%,100% { clip-path: inset(0) } }
+.tp-wipeU { animation-name: tp-wipeU; } @keyframes tp-wipeU { 0% { clip-path: inset(100% 0 0 0) } 65%,100% { clip-path: inset(0) } }
+.tp-wipeD { animation-name: tp-wipeD; } @keyframes tp-wipeD { 0% { clip-path: inset(0 0 100% 0) } 65%,100% { clip-path: inset(0) } }
+.tp-iris { animation-name: tp-iris; } @keyframes tp-iris { 0% { clip-path: circle(0 at 50% 50%) } 65%,100% { clip-path: circle(75% at 50% 50%) } }
+.tp-flash { animation-name: tp-flash; } @keyframes tp-flash { 0% { filter: brightness(4); opacity: .3 } 65%,100% { filter: none; opacity: 1 } }
+.tp-shake { animation-name: tp-shake; } @keyframes tp-shake { 0% { opacity: 0 } 10% { transform: translate(-6px, 3px); opacity: 1 } 20% { transform: translate(5px, -3px) } 30% { transform: translate(-4px, 2px) } 40% { transform: translate(3px, -1px) } 65%,100% { transform: none } }
+.tp-glitch { animation-name: tp-glitch; animation-timing-function: steps(1); } @keyframes tp-glitch { 0% { opacity: 0 } 15% { opacity: 1; transform: translateX(-8px); filter: hue-rotate(90deg) } 30% { transform: translateX(6px); filter: hue-rotate(-60deg) } 45% { transform: translateX(-3px); filter: none } 60%,100% { transform: none } }
+
+/* 片段右鍵選單 */
+.ctxmenu { position: fixed; z-index: 80; min-width: 180px; padding: 5px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 12px 40px rgba(0,0,0,.6); display: flex; flex-direction: column; }
+.ctxmenu button { justify-content: flex-start; background: none; border: none; padding: 6px 10px; font-size: 12.5px; border-radius: 6px; }
+.ctxmenu button:hover:not(:disabled) { background: var(--panel3); }
+.ctxmenu button .icon { width: 15px; height: 15px; color: var(--dim); }
+.ctxmenu .kbd { margin-left: auto; padding-left: 16px; color: var(--dim); font-size: 11px; }
+.ctxmenu hr { border: none; border-top: 1px solid var(--line); margin: 4px 2px; }
+.ctxmenu button.danger { color: #fb7185; }

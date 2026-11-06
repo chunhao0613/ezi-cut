@@ -5,13 +5,15 @@ import {
 import { $, h, fmtTime } from './ui.js';
 import { srcAt, srcOffset, srcLength, localAt, avgSpeed, hasCurve, CURVE_PRESETS } from './timemap.js';
 import { TRANSITIONS } from './effects.js';
+import { stickerDef } from './stickers.js';
+import { icon } from './icons.js';
 import { applyCrossTransition, removeCrossTransition } from './tools.js';
 
 const VISUAL_T = new Set(['video', 'image', 'shape', 'text']);
 
 export const TRACK_H = 60;
 
-export function initTimeline({ onDrop, seek }) {
+export function initTimeline({ onDrop, seek, actions = {} }) {
   const scroll = $('tlScroll');
   const inner = $('tlInner');
   const rowsEl = $('tlRows');
@@ -100,7 +102,7 @@ export function initTimeline({ onDrop, seek }) {
   }
 
   function trackHead(t, i) {
-    const btn = (icon, title, fn, on) => h('button', { class: `ic${on ? ' on' : ''}`, title, onclick: fn }, icon);
+    const btn = (ic, title, fn, on) => h('button', { class: `ic${on ? ' on' : ''}`, title, onclick: fn }, icon(ic));
     const name = h('span', { class: 'nm', title: '雙擊改名', ondblclick: () => {
       const n = prompt('軌道名稱', t.name);
       if (n) { checkpoint(); t.name = n; emit('project'); }
@@ -108,9 +110,9 @@ export function initTimeline({ onDrop, seek }) {
     return h('div', { class: 'tl-head', style: `height:${TRACK_H}px` },
       name,
       h('div', { class: 'tl-head-btns' },
-        btn(t.hidden ? '🙈' : '👁', '顯示 / 隱藏畫面', () => { checkpoint(); t.hidden = !t.hidden; emit('project'); }, t.hidden),
-        btn(t.muted ? '🔇' : '🔊', '靜音', () => { checkpoint(); t.muted = !t.muted; emit('project'); }, t.muted),
-        btn('✕', '刪除軌道', () => {
+        btn(t.hidden ? 'eyeOff' : 'eye', t.hidden ? '顯示畫面' : '隱藏畫面', () => { checkpoint(); t.hidden = !t.hidden; emit('project'); }, t.hidden),
+        btn(t.muted ? 'mute' : 'volume', t.muted ? '取消靜音' : '靜音', () => { checkpoint(); t.muted = !t.muted; emit('project'); }, t.muted),
+        btn('x', '刪除軌道', () => {
           const { tracks, clips } = store.project;
           if (tracks.length <= 1) return;
           const n = clips.filter((c) => c.trackId === t.id).length;
@@ -135,6 +137,7 @@ export function initTimeline({ onDrop, seek }) {
   function clipLabel(c, m) {
     let s;
     if (c.type === 'text') s = c.text.content.split('\n')[0] || '文字';
+    else if (c.type === 'shape' && c.shape.kind === 'sticker') s = stickerDef(c.shape.sticker)?.name || '貼圖';
     else if (c.type === 'shape') s = { rect: '形狀', circle: '圓形', solid: '純色', gradient: '漸層', letterbox: '黑邊' }[c.shape.kind] || '形狀';
     else s = m ? m.name : c.slot ? `＋ ${c.slot.label}` : '⚠ 找不到媒體';
     if (hasCurve(c)) s += `  ⤳${CURVE_PRESETS.find((p) => p.id === c.curve.id)?.name || '曲線變速'}`;
@@ -400,6 +403,43 @@ export function initTimeline({ onDrop, seek }) {
       emit('project');
     }
   };
+  // 右鍵選單：片段上顯示編輯動作，空白處可以貼上
+  let ctx = null;
+  const closeCtx = () => { ctx?.remove(); ctx = null; };
+  scroll.addEventListener('contextmenu', (e) => {
+    e.preventDefault();
+    closeCtx();
+    const node = e.target.closest('.clip');
+    const c = node && getClip(node.dataset.id);
+    const item = (ic, label, fn, key, opts = {}) => h('button', { class: opts.danger ? 'danger' : '', disabled: opts.disabled, onclick: () => { closeCtx(); fn(); } },
+      icon(ic), label, key ? h('span', { class: 'kbd' }, key) : null);
+    const t = timeAt(e.clientX);
+    if (c) {
+      select(c.id);
+      const inside = store.time > c.start && store.time < c.start + c.duration;
+      ctx = h('div', { class: 'ctxmenu' },
+        item('split', '在播放頭分割', actions.split, 'S', { disabled: !inside }),
+        item('copy', '複製一份', actions.duplicate, 'Ctrl+D'),
+        item('copy', '複製', actions.copy, 'Ctrl+C'),
+        item('paste', '貼到播放頭', actions.paste, 'Ctrl+V', { disabled: !actions.canPaste?.() }),
+        c.type === 'video' ? item('music', '分離音訊', actions.detach) : null,
+        h('hr'),
+        item('trash', '刪除', actions.remove, 'Delete', { danger: true }));
+    } else {
+      ctx = h('div', { class: 'ctxmenu' },
+        item('paste', '貼在這裡', () => { seek(t); actions.paste(); }, 'Ctrl+V', { disabled: !actions.canPaste?.() }),
+        item('plus', '新增軌道', actions.addTrack));
+    }
+    document.body.append(ctx);
+    const r = ctx.getBoundingClientRect();
+    ctx.style.left = `${Math.min(e.clientX, innerWidth - r.width - 8)}px`;
+    ctx.style.top = `${Math.min(e.clientY, innerHeight - r.height - 8)}px`;
+    setTimeout(() => document.addEventListener('pointerdown', function off(ev) {
+      if (!ctx?.contains(ev.target)) { closeCtx(); document.removeEventListener('pointerdown', off, true); }
+    }, true));
+  });
+  window.addEventListener('keydown', (e) => e.key === 'Escape' && closeCtx());
+
   scroll.addEventListener('pointerup', endDrag);
   scroll.addEventListener('pointercancel', endDrag);
 

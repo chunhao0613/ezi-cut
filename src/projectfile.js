@@ -1,12 +1,9 @@
 // 專案檔：把專案連同用到的媒體與 LUT 打包成一個 .ezicut 檔，可備份或換電腦繼續剪
 import { store, emit, checkpoint, normalizeProject } from './state.js';
 import { importFiles } from './media.js';
+import { packBundle, unpackBundle, dataUrlToBlob } from './bundle.js';
 
-const toB64 = (blob) => new Promise((r) => {
-  const fr = new FileReader();
-  fr.onload = () => r(fr.result);
-  fr.readAsDataURL(blob);
-});
+const MAGIC = 'EZICUT2\n';
 
 // 專案裡所有引用到的媒體 id（含倒放、人聲增強前的原始檔）
 function usedMedia(p) {
@@ -29,29 +26,40 @@ export async function exportProjectFile(onProgress) {
   const p = store.project;
   const files = {};
   const ids = [...usedMedia(p)];
-  for (let i = 0; i < ids.length; i++) {
-    const m = store.media.get(ids[i]);
-    if (m?.blob) files[ids[i]] = { name: m.name, type: m.type, data: await toB64(m.blob) };
-    onProgress?.((i + 1) / Math.max(1, ids.length));
+  for (const id of ids) {
+    const m = store.media.get(id);
+    if (m?.blob) files[id] = { blob: m.blob, name: m.name, type: m.type };
   }
+  onProgress?.(0.5);
   const luts = {};
   for (const c of p.clips) {
     const id = c.grade?.lut;
     if (id && store.luts.has(id) && !luts[id]) luts[id] = { name: store.luts.get(id).name, cube: lutToCube(store.luts.get(id)) };
   }
-  const json = JSON.stringify({ ezicutProject: 1, savedAt: new Date().toISOString(), project: p, files, luts });
-  return new Blob([json], { type: 'application/json' });
+  const blob = packBundle(MAGIC, { ezicutProject: 2, savedAt: new Date().toISOString(), project: p, luts }, files);
+  onProgress?.(1);
+  return blob;
 }
 
 export async function importProjectFile(file, onProgress) {
-  const d = JSON.parse(await file.text());
+  const bundle = await unpackBundle(file, MAGIC);
+  let d;
+  if (bundle) d = { ...bundle.manifest, files: bundle.files };
+  else {
+    // 舊版（JSON + base64）專案檔
+    try {
+      d = JSON.parse(await file.text());
+    } catch {
+      throw new Error('這不是 EziCut 專案檔');
+    }
+  }
   // 改名前（NovaCut）匯出的 .novacut 專案檔也要能開
   if (!d.ezicutProject && !d.novacutProject) throw new Error('這不是 EziCut 專案檔');
   const map = {};
   const entries = Object.entries(d.files || {});
   for (let i = 0; i < entries.length; i++) {
     const [oldId, f] = entries[i];
-    const blob = await (await fetch(f.data)).blob();
+    const blob = f.blob || (await dataUrlToBlob(f.data));
     // 媒體庫已有同名同大小的檔案就沿用
     const same = [...store.media.values()].find((m) => m.name === f.name && m.size === blob.size);
     if (same) map[oldId] = same.id;

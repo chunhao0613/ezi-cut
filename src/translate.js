@@ -41,6 +41,13 @@ function runOpus(model, texts, onStatus) {
         else reject(new Error(d.message));
       }
     };
+    const onErr = (e) => {
+      worker?.removeEventListener('message', onMsg);
+      worker?.terminate();
+      worker = null; // 下次重新建立
+      reject(new Error(e?.message || '背景執行緒載入失敗，請重新整理頁面'));
+    };
+    worker.addEventListener('error', onErr, { once: true });
     worker.addEventListener('message', onMsg);
     worker.postMessage({ id, model, texts });
   });

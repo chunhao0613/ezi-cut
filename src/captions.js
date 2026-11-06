@@ -1,5 +1,5 @@
 // AI 自動字幕（Whisper）、字幕軌、SRT 匯入匯出
-import { store, emit, checkpoint, makeClip, addTrack } from './state.js';
+import { store, emit, checkpoint, makeClip, addTrack, getClip } from './state.js';
 import { detectDevice } from './device.js';
 import { srcLength, localAt } from './timemap.js';
 
@@ -106,6 +106,13 @@ function runWorker(payload, onStatus) {
         else reject(new Error(d.message));
       }
     };
+    const onErr = (e) => {
+      worker?.removeEventListener('message', onMsg);
+      worker?.terminate();
+      worker = null; // 下次重新建立
+      reject(new Error(e?.message || '背景執行緒載入失敗，請重新整理頁面'));
+    };
+    worker.addEventListener('error', onErr, { once: true });
     worker.addEventListener('message', onMsg);
     worker.postMessage({ id, ...payload });
   });
@@ -142,11 +149,17 @@ export async function transcribe(clip, { model: modelId, language, traditional }
   let segs = chunks
     .map((c) => ({ start: c.start ?? 0, end: c.end ?? total, text: c.text.trim() }))
     .filter((s) => s.text && !/^\[.*\]$|^\(.*\)$/.test(s.text));
-  if (traditional) {
+  // 只轉中文；自動偵測時看到平假名 / 片假名就判定為日文，不轉
+  const isJapanese = !language && segs.some((x) => /[\u3040-\u30ff]/.test(x.text));
+  if (traditional && (language === 'chinese' || language === 'cantonese' || (!language && !isJapanese))) {
     const conv = await toTraditional(segs.map((s) => s.text));
     segs = segs.map((s, i) => ({ ...s, text: conv[i] }));
   }
   segs = segs.flatMap((s) => splitSegment(s));
+  // 辨識期間片段可能被刪除、移動，或已換成別的專案：以目前時間軸上的片段為準
+  const live = getClip(clip.id);
+  if (!live) throw new Error('辨識期間來源片段已被刪除或專案已更換，字幕沒有加入');
+  clip = live;
   // 來源時間 → 時間軸時間
   return segs.map((s) => ({
     start: clip.start + localAt(clip, Math.min(s.start, total)),
@@ -162,7 +175,7 @@ export function splitSegment(s, maxLen = 40) {
   const text = s.text.replace(/\s+/g, ' ').trim();
   if (textLen(text) <= maxLen) return [{ ...s, text }];
   // 先依標點切，再依空白（西文）或字數（中文）打包
-  const parts = text.split(/(?<=[，。！？、；：,.!?;:])\s*/).filter(Boolean);
+  const parts = text.split(/(?<=[，。！？、；：])|(?<=[,.!?;:]\s)/).filter(Boolean);
   const units = parts.flatMap((p) => (textLen(p) <= maxLen ? [p] : CJK.test(p) ? p.match(new RegExp(`.{1,${maxLen / 2}}`, 'gu')) : p.split(/(?<=\s)/)));
   const lines = [];
   let cur = '';
@@ -213,10 +226,10 @@ export function addCaptions(segs, { replace = true } = {}) {
   const track = captionTrack(true);
   const from = segs[0].start;
   const to = segs[segs.length - 1].end;
+  // 沿用目前字幕軌上第一個字幕的樣式（使用者可能改過）；要在刪除舊字幕之前取
+  const tpl = captionClips()[0];
   if (replace) store.project.clips = store.project.clips.filter((c) => !(c.trackId === track.id && c.start < to && c.start + c.duration > from));
   const style = captionStyle();
-  // 沿用目前字幕軌上第一個字幕的樣式（使用者可能改過）
-  const tpl = captionClips()[0];
   let prevEnd = 0;
   for (const s of segs) {
     const start = Math.max(s.start, prevEnd);
@@ -282,13 +295,18 @@ export async function translateCaptions(src, tgt, mode, onStatus) {
   if (!list.length) throw new Error('目前沒有字幕可以翻譯');
   const { translateTexts } = await import('./translate.js');
   const { texts, engine } = await translateTexts(list.map((c) => c.text.content.replace(/\n/g, ' ')), src, tgt, onStatus);
+  // 翻譯可能花好幾分鐘，期間使用者可能復原、刪字幕或開別的專案：用 id 重新找回字幕再寫入
+  const ids = list.map((c) => c.id);
+  const live = ids.map((id) => getClip(id));
+  if (!live.some(Boolean)) throw new Error('翻譯期間字幕已被刪除或專案已更換，譯文沒有加入');
   checkpoint();
   if (mode === 'replace') {
-    list.forEach((c, i) => (c.text.content = texts[i]));
+    live.forEach((c, i) => c && (c.text.content = texts[i]));
   } else {
     const track = translationTrack(true);
     store.project.clips = store.project.clips.filter((c) => c.trackId !== track.id);
-    list.forEach((c, i) => {
+    live.forEach((c, i) => {
+      if (!c) return;
       const size = Math.round(c.text.size * 0.72);
       store.project.clips.push(makeClip('text', {
         caption: true, captionOf: c.id, trackId: track.id, start: c.start, duration: c.duration,
@@ -298,7 +316,7 @@ export async function translateCaptions(src, tgt, mode, onStatus) {
     });
   }
   emit('project');
-  return { count: list.length, engine };
+  return { count: live.filter(Boolean).length, engine };
 }
 
 // ---------- SRT ----------

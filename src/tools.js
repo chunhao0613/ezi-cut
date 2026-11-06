@@ -1,5 +1,5 @@
 // 進階剪輯工具：定格、倒放、自動剪靜音、節拍偵測與一鍵卡點
-import { store, emit, checkpoint, makeClip, splitClip, deleteClip, getProp, KF_PROPS, placeClip, defaultTrack, addTrack } from './state.js';
+import { store, emit, checkpoint, makeClip, splitClip, deleteClip, getProp, KF_PROPS, placeClip, defaultTrack, addTrack, getClip } from './state.js';
 import { srcAt, srcLength, localAt, avgSpeed, mirrorCurve, hasCurve } from './timemap.js';
 import { importFiles } from './media.js';
 import { detectBeats } from './beats.js';
@@ -29,15 +29,34 @@ export async function freezeFrame(c, t, dur = 2) {
   const frame = await grabFrame(m, srcAt(c, local));
   const blob = await new Promise((r) => frame.toBlob(r, 'image/png'));
   const [img] = await importFiles([new File([blob], `${m.name.replace(/\.[^.]+$/, '')} 定格 ${fmtTime(t)}.png`, { type: 'image/png' })]);
+  c = getClip(c.id);
+  if (!c) throw new Error('處理期間片段已被刪除');
   checkpoint();
-  const at = c.start + local;
+  let at = c.start + local;
   if (local > 0.05) splitClip(c, at);
-  for (const o of store.project.clips) if (o.trackId === c.trackId && o.start >= at - EPS) o.start += dur;
+  else at = c.start; // 太靠近開頭就直接插在片段前面
+  // 同一支影片拆出的音訊、人聲增強音軌與字幕要一起往後推，才不會對不上
+  const shift = new Set([c.trackId]);
+  for (const o of store.project.clips) if (o !== c && linkedMedia(o, c) && o.start < c.start + c.duration && o.start + o.duration > c.start) shift.add(o.trackId);
+  for (const t of store.project.tracks) if (t.kind?.startsWith('caption')) shift.add(t.id);
+  for (const o of store.project.clips) {
+    if (!shift.has(o.trackId) || o.start < at - EPS) continue;
+    o.start += dur;
+  }
+  // 橫跨定格位置的連動片段（例如拆出的音訊）也在同一點切開，右半段往後推
+  for (const o of [...store.project.clips]) {
+    if (o === c || !shift.has(o.trackId) || o.trackId === c.trackId) continue;
+    if (o.start < at - 0.05 && o.start + o.duration > at + 0.05) {
+      const r = splitClip(o, at);
+      if (r) r.start += dur;
+    }
+  }
   const transform = {};
   for (const p of KF_PROPS) transform[p] = getProp(c, p, local);
   const still = makeClip('image', {
     mediaId: img.id, trackId: c.trackId, start: at, duration: dur, transform,
     filters: { ...c.filters }, effects: { ...c.effects }, crop: { ...c.crop }, chroma: { ...c.chroma },
+    grade: structuredClone(c.grade), mask: structuredClone(c.mask), aiMatte: { ...c.aiMatte },
     fit: c.fit, bgBlur: c.bgBlur, blend: c.blend,
   });
   store.project.clips.push(still);
@@ -51,8 +70,11 @@ export async function freezeFrame(c, t, dur = 2) {
 export async function toggleReverse(c, onProgress) {
   if (c.reversed) {
     checkpoint();
-    c.mediaId = c.reversed.mediaId;
-    c.in = c.reversed.in;
+    // 倒放素材的時間 r 對應原始素材的 R.in + 長度 - r；片段被分割或修剪過也能還原到正確的範圍
+    const R = c.reversed;
+    const revLen = R.len ?? store.media.get(c.mediaId)?.duration;
+    c.in = isFinite(revLen) ? Math.max(0, R.in + revLen - (c.in + srcLength(c))) : R.in;
+    c.mediaId = R.mediaId;
     c.reversed = null;
     if (hasCurve(c)) c.curve = { ...c.curve, pts: mirrorCurve(c.curve.pts) };
     emit('project');
@@ -61,10 +83,14 @@ export async function toggleReverse(c, onProgress) {
   const m = store.media.get(c.mediaId);
   if (!m?.blob) throw new Error('找不到影片檔');
   const { makeReversed } = await import('./reverse.js');
-  const file = await makeReversed(m, c.in, Math.min(m.duration, c.in + srcLength(c)), onProgress);
+  const in0 = c.in;
+  const end = Math.min(m.duration, in0 + srcLength(c));
+  const file = await makeReversed(m, in0, end, onProgress);
   const [rm] = await importFiles([file]);
+  c = getClip(c.id);
+  if (!c) throw new Error('處理期間片段已被刪除');
   checkpoint();
-  c.reversed = { mediaId: c.mediaId, in: c.in };
+  c.reversed = { mediaId: c.mediaId, in: in0, len: end - in0 };
   c.mediaId = rm.id;
   c.in = 0;
   if (hasCurve(c)) c.curve = { ...c.curve, pts: mirrorCurve(c.curve.pts) };
@@ -78,6 +104,8 @@ export async function enhanceClipVoice(c, opts, onProgress) {
   if (m.hasAudio === false) throw new Error('這個片段沒有聲音');
   const { enhanceVoice } = await import('./voice.js');
   const [nm] = await importFiles([await enhanceVoice(m, opts, onProgress)]);
+  c = getClip(c.id);
+  if (!c) throw new Error('處理期間片段已被刪除');
   checkpoint();
   if (c.type === 'video') {
     // 影片：把增強後的聲音放成獨立音軌，原影片靜音
@@ -192,9 +220,18 @@ export async function captionsToSpeech(captions, voiceId, speed, onStatus) {
 }
 
 // ---------- 波紋刪除 ----------
-/** 刪掉時間軸 [a, b) 這段：cutTracks 上的片段被切掉，所有軌道上 b 之後的片段往前補 */
+// 兩個片段是否來自同一段素材（分離出的音訊、人聲增強後的音軌都算）
+const linkedMedia = (o, c) =>
+  !!o.mediaId && (o.mediaId === c.mediaId || o.enhanced?.mediaId === c.mediaId || c.enhanced?.mediaId === o.mediaId || (o.enhanced && o.enhanced.mediaId === c.enhanced?.mediaId));
+
+/** 刪掉時間軸 [a, b) 這段：cutTracks 上的片段被切掉，其他軌道上 b 之後的片段往前補 */
 export function rippleDelete(a, b, cutTracks) {
   const len = b - a;
+  // 沒被剪的軌道上若有片段橫跨剪掉的位置（例如背景音樂），整條軌道維持原位，不然後面的片段會疊上去
+  const keep = new Set();
+  for (const c of store.project.clips) {
+    if (!cutTracks.has(c.trackId) && c.start < a - EPS && c.start + c.duration > a + EPS) keep.add(c.trackId);
+  }
   for (const c of [...store.project.clips]) {
     if (!cutTracks.has(c.trackId)) continue;
     if (c.start + c.duration <= a + EPS || c.start >= b - EPS) continue;
@@ -204,6 +241,7 @@ export function rippleDelete(a, b, cutTracks) {
     if (part.start >= a - 0.06 && part.start + part.duration <= b + 0.06) deleteClip(part);
   }
   for (const c of store.project.clips) {
+    if (keep.has(c.trackId)) continue;
     if (c.start >= b - EPS) c.start -= len;
     else if (c.start > a && c.start < b) c.start = a;
   }
@@ -241,7 +279,7 @@ export function removeSilences(c, ranges) {
   // 同一支影片拆出去的音訊、字幕軌也要一起剪，才不會對不上
   const cut = new Set([c.trackId]);
   for (const o of store.project.clips) {
-    if (o !== c && o.mediaId && o.mediaId === c.mediaId && Math.abs(o.start - c.start) < 0.05) cut.add(o.trackId);
+    if (o !== c && Math.abs(o.start - c.start) < 0.05 && linkedMedia(o, c)) cut.add(o.trackId);
   }
   for (const t of store.project.tracks) if (t.kind?.startsWith('caption')) cut.add(t.id);
   let removed = 0;

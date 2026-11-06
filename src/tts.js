@@ -73,12 +73,20 @@ async function piperSay(text, voiceId, onStatus) {
     }
     text = toSimplified(text);
   }
-  const s = await TtsSession.create({
-    voiceId,
-    // 套件預設的 onnxruntime 路徑（1.18）和實際打包的版本不合，指定成相同版本（1.30.0）
-    wasmPaths: { ...TtsSession.WASM_LOCATIONS, onnxWasm: 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.30.0/dist/' },
-    progress: (p) => p.total && onStatus?.({ text: '下載語音模型中…（第一次需要）', progress: p.loaded / p.total }),
-  });
+  let s;
+  try {
+    s = await TtsSession.create({
+      voiceId,
+      // 套件預設的 onnxruntime 路徑（1.18）和實際打包的版本不合，指定成相同版本（1.30.0）
+      wasmPaths: { ...TtsSession.WASM_LOCATIONS, onnxWasm: 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.30.0/dist/' },
+      progress: (p) => p.total && onStatus?.({ text: '下載語音模型中…（第一次需要）', progress: p.loaded / p.total }),
+    });
+  } catch (e) {
+    // 套件會先記住這個（失敗的）實例；清掉才能在下次重新下載
+    TtsSession._instance = null;
+    piperVoice = '';
+    throw e;
+  }
   onStatus?.({ text: '合成語音中…' });
   return s.predict(text);
 }
