@@ -1,5 +1,5 @@
 // AI 自動字幕（Whisper）、字幕軌、SRT 匯入匯出
-import { store, emit, checkpoint, makeClip, addTrack } from './state.js';
+import { store, emit, checkpoint, makeClip, addTrack, getClip } from './state.js';
 import { detectDevice } from './device.js';
 import { srcLength, localAt } from './timemap.js';
 
@@ -149,11 +149,17 @@ export async function transcribe(clip, { model: modelId, language, traditional }
   let segs = chunks
     .map((c) => ({ start: c.start ?? 0, end: c.end ?? total, text: c.text.trim() }))
     .filter((s) => s.text && !/^\[.*\]$|^\(.*\)$/.test(s.text));
-  if (traditional && (language === 'chinese' || language === 'cantonese' || !language || language === 'auto')) {
+  // 只轉中文；自動偵測時看到平假名 / 片假名就判定為日文，不轉
+  const isJapanese = !language && segs.some((x) => /[\u3040-\u30ff]/.test(x.text));
+  if (traditional && (language === 'chinese' || language === 'cantonese' || (!language && !isJapanese))) {
     const conv = await toTraditional(segs.map((s) => s.text));
     segs = segs.map((s, i) => ({ ...s, text: conv[i] }));
   }
   segs = segs.flatMap((s) => splitSegment(s));
+  // 辨識期間片段可能被刪除、移動，或已換成別的專案：以目前時間軸上的片段為準
+  const live = getClip(clip.id);
+  if (!live) throw new Error('辨識期間來源片段已被刪除或專案已更換，字幕沒有加入');
+  clip = live;
   // 來源時間 → 時間軸時間
   return segs.map((s) => ({
     start: clip.start + localAt(clip, Math.min(s.start, total)),
@@ -289,13 +295,18 @@ export async function translateCaptions(src, tgt, mode, onStatus) {
   if (!list.length) throw new Error('目前沒有字幕可以翻譯');
   const { translateTexts } = await import('./translate.js');
   const { texts, engine } = await translateTexts(list.map((c) => c.text.content.replace(/\n/g, ' ')), src, tgt, onStatus);
+  // 翻譯可能花好幾分鐘，期間使用者可能復原、刪字幕或開別的專案：用 id 重新找回字幕再寫入
+  const ids = list.map((c) => c.id);
+  const live = ids.map((id) => getClip(id));
+  if (!live.some(Boolean)) throw new Error('翻譯期間字幕已被刪除或專案已更換，譯文沒有加入');
   checkpoint();
   if (mode === 'replace') {
-    list.forEach((c, i) => (c.text.content = texts[i]));
+    live.forEach((c, i) => c && (c.text.content = texts[i]));
   } else {
     const track = translationTrack(true);
     store.project.clips = store.project.clips.filter((c) => c.trackId !== track.id);
-    list.forEach((c, i) => {
+    live.forEach((c, i) => {
+      if (!c) return;
       const size = Math.round(c.text.size * 0.72);
       store.project.clips.push(makeClip('text', {
         caption: true, captionOf: c.id, trackId: track.id, start: c.start, duration: c.duration,
@@ -305,7 +316,7 @@ export async function translateCaptions(src, tgt, mode, onStatus) {
     });
   }
   emit('project');
-  return { count: list.length, engine };
+  return { count: live.filter(Boolean).length, engine };
 }
 
 // ---------- SRT ----------

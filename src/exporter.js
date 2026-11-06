@@ -7,7 +7,7 @@ import {
   QUALITY_LOW, QUALITY_MEDIUM, QUALITY_HIGH, QUALITY_VERY_HIGH,
 } from 'mediabunny';
 import { store, projectDuration, getTrack } from './state.js';
-import { Renderer, loadMatte } from './renderer.js';
+import { Renderer, loadMatte, preloadFonts } from './renderer.js';
 import { timeStretch } from './timestretch.js';
 import { srcAt, srcLength, hasCurve } from './timemap.js';
 
@@ -223,6 +223,8 @@ class FrameRenderer {
     this.videoClips = store.project.clips.filter((c) => c.type === 'video');
   }
   async init(onProgress) {
+    onProgress?.(0, '載入字型…');
+    await preloadFonts(store.project.clips);
     if (store.project.clips.some((c) => c.aiMatte?.on)) {
       onProgress?.(0, '載入 AI 去背模型…');
       await loadMatte();
@@ -250,6 +252,7 @@ class FrameRenderer {
   }
   close() {
     for (const cur of this.cursors.values()) cur?.close();
+    this.r.dispose();
   }
 }
 
