@@ -22,7 +22,9 @@ hydrateIcons();
 // 匯出用的函式庫（Mediabunny）只在按下匯出時才載入，讓首次開啟網站更快
 const canFastExport = () => typeof VideoEncoder !== 'undefined' && typeof AudioEncoder !== 'undefined';
 
-const SAVE_KEY = 'ezicut.project';
+// 改名前（NovaCut）的名稱，刻意保留：瀏覽器儲存是依網域區分、不看網址路徑，
+// 沿用舊名稱，使用者原本存的素材與專案在改名後才不會消失。
+const SAVE_KEY = 'novacut.project';
 const canvas = $('canvas');
 const overlay = $('overlay');
 const octx = overlay.getContext('2d');
@@ -227,7 +229,7 @@ initInspector({
     toast(`已匯出專案檔（${(blob.size / 1e6).toFixed(1)} MB）`);
   }),
   importProject: () => {
-    const input = h('input', { type: 'file', accept: '.ezicut,.json,application/json' });
+    const input = h('input', { type: 'file', accept: '.ezicut,.novacut,.json,application/json' });
     input.onchange = () => input.files[0] && busyTask('開啟專案檔', async (progress) => {
       const { importProjectFile } = await import('./projectfile.js');
       const r = await importProjectFile(input.files[0], progress);

@@ -210,7 +210,8 @@ export async function importTemplateFile(file) {
       throw new Error('這不是 EziCut 範本檔');
     }
   }
-  if (!d.ezicutTemplate) throw new Error('這不是 EziCut 範本檔');
+  // 改名前（NovaCut）匯出的範本檔也要能開
+  if (!d.ezicutTemplate && !d.novacutTemplate) throw new Error('這不是 EziCut 範本檔');
   const files = {};
   for (const [id, f] of Object.entries(d.files || {})) files[id] = { name: f.name, type: f.type, blob: f.blob || (await dataUrlToBlob(f.data)) };
   const id = uid();
