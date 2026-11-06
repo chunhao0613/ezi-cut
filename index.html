@@ -11,14 +11,15 @@
 <body>
   <div id="app">
     <header class="topbar">
-      <div class="brand"><span class="logo">▶</span>EziCut</div>
+      <div class="brand"><span class="logo"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l10.5-6.5z" fill="currentColor"/><path d="M4 7.5v9" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg></span>EziCut</div>
       <input id="projName" class="proj-name" spellcheck="false" />
       <div class="spacer"></div>
-      <button id="btnUndo" title="復原 (Ctrl+Z)">↶<span class="lbl"> 復原</span></button>
-      <button id="btnRedo" title="重做 (Ctrl+Shift+Z)">↷<span class="lbl"> 重做</span></button>
-      <button id="btnNew" class="hide-mobile" title="清空並開始新專案">新專案</button>
-      <button id="btnShot" class="hide-mobile" title="把目前畫面存成 PNG">📷 截圖</button>
-      <button id="btnExport" class="primary">⬇<span class="lbl"> 匯出影片</span></button>
+      <button id="btnUndo" class="ghost" title="復原 (Ctrl+Z)"><i data-icon="undo"></i><span class="lbl">復原</span></button>
+      <button id="btnRedo" class="ghost" title="重做 (Ctrl+Shift+Z)"><i data-icon="redo"></i><span class="lbl">重做</span></button>
+      <span class="tb-sep hide-mobile"></span>
+      <button id="btnNew" class="ghost hide-mobile" title="清空並開始新專案"><i data-icon="newfile"></i><span class="lbl">新專案</span></button>
+      <button id="btnShot" class="ghost hide-mobile" title="把目前畫面存成 PNG"><i data-icon="camera"></i><span class="lbl">截圖</span></button>
+      <button id="btnExport" class="primary"><i data-icon="export"></i><span class="lbl">匯出影片</span></button>
     </header>
 
     <main class="workspace">
@@ -39,14 +40,14 @@
         <div class="transport">
           <span id="timeCur" class="tc">00:00.00</span>
           <div class="transport-btns">
-            <button id="btnStart" title="回到開頭 (Home)">⏮</button>
-            <button id="btnBack" title="上一格 (←)">⏪</button>
-            <button id="btnPlay" class="play" title="播放 / 暫停 (空白鍵)">▶</button>
-            <button id="btnFwd" title="下一格 (→)">⏩</button>
-            <button id="btnEnd" title="跳到結尾 (End)">⏭</button>
+            <button id="btnStart" title="回到開頭 (Home)"><i data-icon="toStart"></i></button>
+            <button id="btnBack" title="上一格 (←)"><i data-icon="stepBack"></i></button>
+            <button id="btnPlay" class="play" title="播放 / 暫停 (空白鍵)"><i data-icon="play"></i></button>
+            <button id="btnFwd" title="下一格 (→)"><i data-icon="stepFwd"></i></button>
+            <button id="btnEnd" title="跳到結尾 (End)"><i data-icon="toEnd"></i></button>
           </div>
           <span id="timeDur" class="tc dim">00:00.00</span>
-          <button id="btnFull" title="全螢幕預覽">⛶</button>
+          <button id="btnFull" title="全螢幕預覽"><i data-icon="fullscreen"></i></button>
         </div>
       </section>
 
@@ -56,17 +57,18 @@
     <section class="timeline" id="timeline">
       <div class="tl-resize" id="tlResize"></div>
       <div class="tl-toolbar">
-        <button data-act="split" title="在播放頭分割 (S)">✂ 分割</button>
-        <button data-act="delete" title="刪除 (Delete)">🗑 刪除</button>
-        <button data-act="duplicate" title="複製一份 (Ctrl+D)">⧉ 複製</button>
-        <button data-act="detach" title="把影片的聲音拆成獨立音訊片段">🎵 分離音訊</button>
-        <button data-act="addTrack" title="新增一條軌道">＋ 軌道</button>
-        <label class="chk" title="拖曳時自動對齊片段邊緣與播放頭"><input type="checkbox" id="snapToggle" checked /> 磁吸</label>
+        <button data-act="split" title="在播放頭分割 (S)"><i data-icon="split"></i>分割</button>
+        <button data-act="delete" title="刪除 (Delete)"><i data-icon="trash"></i>刪除</button>
+        <button data-act="duplicate" title="複製一份 (Ctrl+D)"><i data-icon="copy"></i>複製</button>
+        <button data-act="detach" title="把影片的聲音拆成獨立音訊片段"><i data-icon="music"></i>分離音訊</button>
+        <span class="tb-sep"></span>
+        <button data-act="addTrack" title="新增一條軌道"><i data-icon="plus"></i>軌道</button>
+        <label class="toggle" title="拖曳時自動對齊片段邊緣、播放頭與節拍"><input type="checkbox" id="snapToggle" checked /><i data-icon="magnet"></i>磁吸</label>
         <div class="spacer"></div>
-        <button data-act="zoomOut" title="縮小 (-)">－</button>
+        <button data-act="zoomOut" class="icon-btn" title="縮小 (-)"><i data-icon="minus"></i></button>
         <input type="range" id="zoomRange" min="4" max="400" value="80" />
-        <button data-act="zoomIn" title="放大 (+)">＋</button>
-        <button data-act="zoomFit" title="整個專案剛好放進畫面">適合</button>
+        <button data-act="zoomIn" class="icon-btn" title="放大 (+)"><i data-icon="plus"></i></button>
+        <button data-act="zoomFit" title="整個專案剛好放進畫面"><i data-icon="fit"></i>適合</button>
       </div>
       <div class="tl-main">
         <div class="tl-corner"></div>
@@ -85,9 +87,9 @@
   </div>
 
   <nav class="mobile-nav" id="mobileNav">
-    <button data-mtab="library"><span>📁</span>素材</button>
-    <button data-mtab="inspector"><span>🎛</span>編輯</button>
-    <button data-mtab="timeline" class="on"><span>🎞</span>時間軸</button>
+    <button data-mtab="library"><i data-icon="media"></i>素材</button>
+    <button data-mtab="inspector"><i data-icon="sliders"></i>編輯</button>
+    <button data-mtab="timeline" class="on"><i data-icon="timeline"></i>時間軸</button>
   </nav>
   <div id="toast"></div>
   <div id="modal" class="modal hidden"></div>

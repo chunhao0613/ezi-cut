@@ -106,6 +106,13 @@ function runWorker(payload, onStatus) {
         else reject(new Error(d.message));
       }
     };
+    const onErr = (e) => {
+      worker?.removeEventListener('message', onMsg);
+      worker?.terminate();
+      worker = null; // 下次重新建立
+      reject(new Error(e?.message || '背景執行緒載入失敗，請重新整理頁面'));
+    };
+    worker.addEventListener('error', onErr, { once: true });
     worker.addEventListener('message', onMsg);
     worker.postMessage({ id, ...payload });
   });
@@ -142,7 +149,7 @@ export async function transcribe(clip, { model: modelId, language, traditional }
   let segs = chunks
     .map((c) => ({ start: c.start ?? 0, end: c.end ?? total, text: c.text.trim() }))
     .filter((s) => s.text && !/^\[.*\]$|^\(.*\)$/.test(s.text));
-  if (traditional) {
+  if (traditional && (language === 'chinese' || language === 'cantonese' || !language || language === 'auto')) {
     const conv = await toTraditional(segs.map((s) => s.text));
     segs = segs.map((s, i) => ({ ...s, text: conv[i] }));
   }
@@ -162,7 +169,7 @@ export function splitSegment(s, maxLen = 40) {
   const text = s.text.replace(/\s+/g, ' ').trim();
   if (textLen(text) <= maxLen) return [{ ...s, text }];
   // 先依標點切，再依空白（西文）或字數（中文）打包
-  const parts = text.split(/(?<=[，。！？、；：,.!?;:])\s*/).filter(Boolean);
+  const parts = text.split(/(?<=[，。！？、；：])|(?<=[,.!?;:]\s)/).filter(Boolean);
   const units = parts.flatMap((p) => (textLen(p) <= maxLen ? [p] : CJK.test(p) ? p.match(new RegExp(`.{1,${maxLen / 2}}`, 'gu')) : p.split(/(?<=\s)/)));
   const lines = [];
   let cur = '';
@@ -213,10 +220,10 @@ export function addCaptions(segs, { replace = true } = {}) {
   const track = captionTrack(true);
   const from = segs[0].start;
   const to = segs[segs.length - 1].end;
+  // 沿用目前字幕軌上第一個字幕的樣式（使用者可能改過）；要在刪除舊字幕之前取
+  const tpl = captionClips()[0];
   if (replace) store.project.clips = store.project.clips.filter((c) => !(c.trackId === track.id && c.start < to && c.start + c.duration > from));
   const style = captionStyle();
-  // 沿用目前字幕軌上第一個字幕的樣式（使用者可能改過）
-  const tpl = captionClips()[0];
   let prevEnd = 0;
   for (const s of segs) {
     const start = Math.max(s.start, prevEnd);

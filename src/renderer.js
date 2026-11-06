@@ -1,4 +1,5 @@
 // 畫面合成：把時間 t 的所有片段畫到 canvas 上，並同步影音元素
+import { drawSticker } from './stickers.js';
 import { store, getProp, getTrack } from './state.js';
 import { clipMods, filterString } from './effects.js';
 import { srcAt, speedAt } from './timemap.js';
@@ -252,11 +253,12 @@ export class Renderer {
       if (playing) {
         if (el.paused) {
           if (Math.abs(el.currentTime - src) > 0.05) el.currentTime = src;
-          el.play().catch(() => {});
+          // 已播完的元素再呼叫 play() 會跳回開頭，造成尾端重播
+          if (!el.ended && !(el.duration && src >= el.duration - 0.05)) el.play().catch(() => {});
         } else if (!el.seeking && Math.abs(el.currentTime - src) > 0.3) el.currentTime = src;
       } else {
         if (!el.paused) el.pause();
-        if (!el.seeking && Math.abs(el.currentTime - src) > 0.02) el.currentTime = src;
+        if (!el.seeking && Math.abs(el.currentTime - src) > 0.25 / (store.project.fps || 30)) el.currentTime = src;
       }
     }
     for (const id of [...this.players.keys()]) if (!alive.has(id)) this.dropPlayer(id);
@@ -383,7 +385,7 @@ export class Renderer {
     } else if (c.type === 'text') {
       ({ w: bw, h: bh } = drawText(L, c, local, t));
     } else if (c.type === 'shape') {
-      ({ w: bw, h: bh } = drawShape(L, c, W, H));
+      ({ w: bw, h: bh } = drawShape(L, c, W, H, local));
     }
     if (c.mask && c.mask.type !== 'none') this.applyMask(c.mask, bw, bh, W, H);
     L.restore();
@@ -724,8 +726,9 @@ function drawRun(L, s, text, x, y, color) {
   L.shadowBlur = 0;
 }
 
-function drawShape(L, c, W, H) {
+function drawShape(L, c, W, H, local = 0) {
   const s = c.shape;
+  if (s.kind === 'sticker') return drawSticker(L, s, local);
   if (s.kind === 'solid' || s.kind === 'gradient') {
     if (s.kind === 'gradient') {
       const g = L.createLinearGradient(-W / 2, -H / 2, W / 2, H / 2);

@@ -14,6 +14,10 @@ import { trackObject } from './track.js';
 import { loadMatte } from './renderer.js';
 import { TEXT_PRESETS, STICKERS, SHAPE_PRESETS, FILTER_PRESETS } from './effects.js';
 import { $, h, toast, fmtTime, debounce, openModal } from './ui.js';
+import { stickerDef, stickerShape } from './stickers.js';
+import { hydrateIcons, setIcon } from './icons.js';
+
+hydrateIcons();
 
 // 匯出用的函式庫（Mediabunny）只在按下匯出時才載入，讓首次開啟網站更快
 const canFastExport = () => typeof VideoEncoder !== 'undefined' && typeof AudioEncoder !== 'undefined';
@@ -48,7 +52,7 @@ function pause() {
   emit('play');
 }
 const togglePlay = () => (store.playing ? pause() : play());
-on('play', () => ($('btnPlay').textContent = store.playing ? '❚❚' : '▶'));
+on('play', () => setIcon($('btnPlay'), store.playing ? 'pause' : 'play'));
 
 // ---------- 編輯動作 ----------
 function adaptProject(w, hgt) {
@@ -73,6 +77,10 @@ function presetClip(kind, i) {
     return makeClip('text', { duration: 3, text: p.text, transform: p.transform || {}, transIn: p.transIn || {}, transOut: p.transOut || {} });
   }
   if (kind === 'sticker') return makeClip('text', { duration: 3, text: { content: STICKERS[i], size: 220 }, transIn: { type: 'bounce', dur: 0.4 } });
+  if (kind === 'vsticker') {
+    const def = stickerDef(i);
+    return makeClip('shape', { duration: 3, shape: stickerShape(def, store.project.width), transIn: { type: def.loop === 'draw' ? 'none' : 'bounce', dur: 0.4 } });
+  }
   const p = SHAPE_PRESETS[i];
   return makeClip('shape', { duration: 4, shape: p.shape, transform: p.transform || {} });
 }
@@ -185,7 +193,10 @@ function doRedo() {
 }
 
 // ---------- 初始化各區塊 ----------
-const timeline = initTimeline({ seek, onDrop: handleDrop });
+const timeline = initTimeline({
+  seek, onDrop: handleDrop,
+  actions: { split, duplicate, copy, paste, remove, detach, canPaste: () => !!clipboard, addTrack: () => { checkpoint(); addTrack(0); emit('project'); } },
+});
 initLibrary({
   addMediaClip, addPreset, applyFilterPreset, applyTransition, seek, select,
   speakCaptions: (list, voice, speed) => busyTask('字幕配音', async (progress) => {
@@ -278,7 +289,7 @@ async function handleDrop(dt, t, trackId) {
     if (m) addMediaClip(m, t, trackId);
   } else if (preset) {
     const [kind, i] = preset.split(':');
-    addPreset(kind, +i, t, trackId);
+    addPreset(kind, kind === 'vsticker' ? i : +i, t, trackId);
   } else if (dt.files?.length) {
     const list = (await importFiles(dt.files)).filter((m) => m?.type);
     let at = t;
@@ -797,7 +808,7 @@ const save = debounce(() => {
     console.warn('自動儲存失敗', e);
   }
 }, 500);
-on('*', (evt) => evt !== 'select' && evt !== 'play' && evt !== 'media' && save());
+on('*', (evt) => evt !== 'select' && evt !== 'play' && evt !== 'media' && evt !== 'time' && save());
 
 if (import.meta.env.DEV) window.__nova = { store, emit, renderer };
 
