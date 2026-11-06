@@ -2,7 +2,7 @@
 import {
   Output, Mp4OutputFormat, MovOutputFormat, WebMOutputFormat, MkvOutputFormat, MpegTsOutputFormat,
   Mp3OutputFormat, WavOutputFormat, FlacOutputFormat, OggOutputFormat, AdtsOutputFormat,
-  BufferTarget, CanvasSource, AudioBufferSource, Input, BlobSource, ALL_FORMATS, CanvasSink,
+  BufferTarget, CanvasSource, AudioBufferSource, Input, BlobSource, ALL_FORMATS, CanvasSink, AudioBufferSink,
   getFirstEncodableVideoCodec, getFirstEncodableAudioCodec, canEncodeVideo, canEncodeAudio,
   QUALITY_LOW, QUALITY_MEDIUM, QUALITY_HIGH, QUALITY_VERY_HIGH,
 } from 'mediabunny';
@@ -72,7 +72,8 @@ class ElementCursor {
   }
 }
 
-async function openCursor(c) {
+// fromSrc：第一個需要的素材時間（匯出範圍從片段中間開始時，不必從片段開頭解碼）
+async function openCursor(c, fromSrc = c.in) {
   const m = store.media.get(c.mediaId);
   if (!m) return null;
   const end = c.in + srcLength(c) + 0.5;
@@ -80,7 +81,7 @@ async function openCursor(c) {
     const input = new Input({ source: new BlobSource(m.blob), formats: ALL_FORMATS });
     const track = await input.getPrimaryVideoTrack();
     if (!track || !(await track.canDecode())) throw new Error('cannot decode');
-    return new FrameCursor(input, new CanvasSink(track, { poolSize: 4 }), c.in, end);
+    return new FrameCursor(input, new CanvasSink(track, { poolSize: 4 }), Math.max(c.in, fromSrc - 0.05), end);
   } catch (e) {
     console.warn('改用 <video> 解碼', m.name, e);
     return new ElementCursor(m.url);
@@ -95,71 +96,121 @@ function audibleClips() {
   });
 }
 
-// 用 OfflineAudioContext 把所有音訊混成一軌
+// 用 OfflineAudioContext 把 [t0, t1) 這段時間的所有音訊混成一軌
+// 每個片段只解碼實際用到的那一段素材（用 Mediabunny 依時間範圍解碼），長影片或幾 GB 的檔案也不用整個讀進記憶體
 // 混音時解不開的音訊檔（名稱）；匯出完成時提醒使用者，不要默默少掉聲音
 let audioFailures = new Set();
-export async function mixAudio(dur, onStretch) {
-  const SR = 48000;
-  const ctx = new OfflineAudioContext(2, Math.max(1, Math.ceil(dur * SR)), SR);
-  const cache = new Map();
-  for (const c of audibleClips()) {
-    const m = store.media.get(c.mediaId);
-    if (!cache.has(m.id)) {
+
+/** 解碼素材 [a, b) 秒的聲音，回傳 { data: Float32Array[], rate, t0 }（t0 = 第一個樣本的素材時間） */
+async function decodeRange(m, a, b, fullCache) {
+  try {
+    const input = new Input({ source: new BlobSource(m.blob), formats: ALL_FORMATS });
+    try {
+      const track = await input.getPrimaryAudioTrack();
+      if (!track || !(await track.canDecode())) throw new Error('cannot decode');
+      const parts = [];
+      for await (const w of new AudioBufferSink(track).buffers(Math.max(0, a), b)) parts.push(w);
+      if (!parts.length) return null;
+      const rate = parts[0].buffer.sampleRate;
+      const chs = Math.max(...parts.map((w) => w.buffer.numberOfChannels));
+      const t0 = parts[0].timestamp;
+      const last = parts[parts.length - 1];
+      const len = Math.ceil((last.timestamp + last.buffer.duration - t0) * rate) + 1;
+      const data = Array.from({ length: chs }, () => new Float32Array(len));
+      for (const w of parts) {
+        const at = Math.round((w.timestamp - t0) * rate);
+        for (let ch = 0; ch < chs; ch++) {
+          const src = w.buffer.getChannelData(Math.min(ch, w.buffer.numberOfChannels - 1));
+          data[ch].set(src.subarray(0, Math.max(0, Math.min(src.length, len - at))), at);
+        }
+      }
+      return { data, rate, t0 };
+    } finally {
+      input.dispose?.();
+    }
+  } catch (e) {
+    // 備援：整個檔案交給瀏覽器解碼（同一次匯出只解一次）
+    if (!fullCache.has(m.id)) {
       try {
-        cache.set(m.id, await ctx.decodeAudioData(await m.blob.arrayBuffer()));
-      } catch (e) {
-        console.warn('混音時無法解碼', m.name, e);
-        audioFailures.add(m.name);
-        cache.set(m.id, null);
+        const buf = await new OfflineAudioContext(2, 1, 48000).decodeAudioData(await m.blob.arrayBuffer());
+        fullCache.set(m.id, { data: Array.from({ length: buf.numberOfChannels }, (_, i) => buf.getChannelData(i)), rate: buf.sampleRate, t0: 0 });
+      } catch (e2) {
+        console.warn('混音時無法解碼', m.name, e, e2);
+        fullCache.set(m.id, null);
       }
     }
-    const buf = cache.get(m.id);
-    if (!buf) continue;
+    return fullCache.get(m.id);
+  }
+}
+
+export async function mixAudio(t0, t1, onStretch) {
+  const SR = 48000;
+  const ctx = new OfflineAudioContext(2, Math.max(1, Math.ceil((t1 - t0) * SR)), SR);
+  const fullCache = new Map();
+  for (const c of audibleClips()) {
+    // 片段在匯出範圍內的部分（片段自己的時間）
+    const l0 = Math.max(0, t0 - c.start);
+    const l1 = Math.min(c.duration, t1 - c.start);
+    if (l1 - l0 < 1e-4) continue;
+    const m = store.media.get(c.mediaId);
+    const s0 = srcAt(c, l0);
+    const s1 = srcAt(c, l1);
+    const seg = await decodeRange(m, s0 - 0.05, s1 + 0.1, fullCache);
+    if (!seg) {
+      audioFailures.add(m.name);
+      continue;
+    }
+    const rate = seg.rate;
+    const idx = (srcT) => (srcT - seg.t0) * rate; // 素材時間 → seg 裡的樣本位置
+    const mk = (chs, n, r) => ctx.createBuffer(chs, Math.max(1, n), r);
     const src = ctx.createBufferSource();
-    let offset = c.in;
+    let offset = 0;
+    let playDur = l1 - l0;
     if (hasCurve(c)) {
       // 曲線變速：逐樣本依時間對應重新取樣（音高會跟著速度變化，類似錄音帶）
-      const n = Math.max(1, Math.round(c.duration * SR));
-      const sb = ctx.createBuffer(buf.numberOfChannels, n, SR);
-      for (let ch = 0; ch < buf.numberOfChannels; ch++) {
-        const inp = buf.getChannelData(ch);
+      const n = Math.round((l1 - l0) * SR);
+      const sb = mk(seg.data.length, n, SR);
+      seg.data.forEach((inp, ch) => {
         const out = new Float32Array(n);
         for (let i = 0; i < n; i++) {
-          const p = srcAt(c, i / SR) * SR;
+          const p = idx(srcAt(c, l0 + i / SR));
           const i0 = Math.floor(p);
           const f = p - i0;
           out[i] = (inp[i0] || 0) * (1 - f) + (inp[i0 + 1] || 0) * f;
         }
         sb.copyToChannel(out, ch);
-      }
+      });
       src.buffer = sb;
-      offset = 0;
     } else if (c.speed !== 1 && c.keepPitch) {
       // 變速不變調：先把用到的那段做時間伸縮，再以原速播放
       onStretch?.();
       await new Promise((r) => setTimeout(r)); // 讓進度文字有機會更新
-      const from = Math.floor(c.in * SR);
-      const to = Math.min(buf.length, Math.ceil((c.in + c.duration * c.speed) * SR) + 2048);
-      const parts = Array.from({ length: buf.numberOfChannels }, (_, i) => buf.getChannelData(i).subarray(from, to));
-      const stretched = timeStretch(parts, c.speed);
-      const sb = ctx.createBuffer(stretched.length, stretched[0].length, SR);
+      const from = Math.max(0, Math.floor(idx(s0)));
+      const to = Math.min(seg.data[0].length, Math.ceil(idx(s1)) + 2048);
+      const stretched = timeStretch(seg.data.map((d) => d.subarray(from, to)), c.speed);
+      const sb = mk(stretched.length, stretched[0].length, rate);
       stretched.forEach((d, i) => sb.copyToChannel(d, i));
       src.buffer = sb;
-      offset = 0;
     } else {
-      src.buffer = buf;
+      // 只複製用到的那段樣本（整檔備援解碼時，seg 可能是整個檔案）
+      const from = Math.max(0, Math.floor(idx(s0)) - 256);
+      const to = Math.min(seg.data[0].length, Math.ceil(idx(s1)) + 256);
+      const sb = mk(seg.data.length, to - from, rate);
+      seg.data.forEach((d, i) => sb.copyToChannel(d.subarray(from, to), i));
+      src.buffer = sb;
       src.playbackRate.value = c.speed;
+      offset = Math.max(0, (idx(s0) - from) / rate);
+      playDur = (l1 - l0) * c.speed;
     }
+    // 音量包絡：淡入、淡出是分段直線，在轉折點之間做線性變化
+    const gainAt = (l) => c.volume * (c.fadeIn > 0 ? Math.min(1, l / c.fadeIn) : 1) * (c.fadeOut > 0 ? Math.min(1, (c.duration - l) / c.fadeOut) : 1);
+    const when = (l) => c.start + l - t0;
+    const pts = [l0, c.fadeIn, c.duration - c.fadeOut, l1].filter((l) => l >= l0 && l <= l1).sort((a, b) => a - b);
     const g = ctx.createGain();
-    const end = c.start + c.duration;
-    g.gain.setValueAtTime(c.fadeIn > 0 ? 0 : c.volume, c.start);
-    if (c.fadeIn > 0) g.gain.linearRampToValueAtTime(c.volume, c.start + c.fadeIn);
-    if (c.fadeOut > 0) {
-      g.gain.setValueAtTime(c.volume, Math.max(c.start, end - c.fadeOut));
-      g.gain.linearRampToValueAtTime(0, end);
-    }
+    g.gain.setValueAtTime(gainAt(pts[0]), when(pts[0]));
+    for (const l of pts.slice(1)) g.gain.linearRampToValueAtTime(gainAt(l), when(l));
     src.connect(g).connect(ctx.destination);
-    src.start(c.start, offset, src.buffer === buf ? c.duration * c.speed : c.duration);
+    src.start(when(l0), offset, playDur);
   }
   return ctx.startRendering();
 }
@@ -246,8 +297,9 @@ class FrameRenderer {
         }
         continue;
       }
-      if (!this.cursors.has(c.id)) this.cursors.set(c.id, await openCursor(c));
-      const f = await this.cursors.get(c.id)?.at(srcAt(c, t - c.start));
+      const st = srcAt(c, t - c.start);
+      if (!this.cursors.has(c.id)) this.cursors.set(c.id, await openCursor(c, st));
+      const f = await this.cursors.get(c.id)?.at(st);
       if (f) this.r.frames.set(c.id, f);
     }
     this.r.draw(t);
@@ -260,16 +312,9 @@ class FrameRenderer {
   }
 }
 
-function sliceAudio(buf, t0, t1) {
-  const s0 = Math.max(0, Math.floor(t0 * buf.sampleRate));
-  const s1 = Math.min(buf.length, Math.ceil(t1 * buf.sampleRate));
-  const out = new AudioBuffer({ length: Math.max(1, s1 - s0), numberOfChannels: buf.numberOfChannels, sampleRate: buf.sampleRate });
-  for (let ch = 0; ch < buf.numberOfChannels; ch++) out.copyToChannel(buf.getChannelData(ch).subarray(s0, s1), ch);
-  return out;
-}
 async function mixRange(t0, t1, onProgress) {
   onProgress?.(0, '混音中…');
-  return sliceAudio(await mixAudio(Math.max(t1, 0.1), () => onProgress?.(0, '變速不變調處理中…')), t0, t1);
+  return mixAudio(t0, Math.max(t1, t0 + 0.1), () => onProgress?.(0, '變速不變調處理中…'));
 }
 const encOpts = (o) => (o.bitrate ? { bitrate: o.bitrate } : { quality: QUALITY[o.quality] || QUALITY_HIGH });
 const pause = () => new Promise((r) => setTimeout(r));
