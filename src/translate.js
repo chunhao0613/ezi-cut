@@ -1,4 +1,5 @@
 // 字幕翻譯：優先使用 Chrome 內建的裝置端翻譯（Translator API），否則用 Opus-MT 在本機翻譯
+import { idleWorker } from './idle.js';
 export const LANGS = [
   ['zh-Hant', '繁體中文'], ['zh-Hans', '簡體中文'], ['en', '英文'], ['ja', '日文'], ['ko', '韓文'],
   ['es', '西班牙文'], ['fr', '法文'], ['de', '德文'], ['vi', '越南文'], ['id', '印尼文'], ['th', '泰文'],
@@ -24,30 +25,36 @@ export function opusRoute(src, tgt) {
   return null;
 }
 
-let worker = null;
+// 翻譯 Worker：翻完閒置 2 分鐘就關掉，釋放 Opus-MT 模型占用的記憶體
+const trWorker = idleWorker(() => new Worker(new URL('./translate.worker.js', import.meta.url), { type: 'module' }));
 let jobId = 0;
 function runOpus(model, texts, onStatus) {
-  worker ||= new Worker(new URL('./translate.worker.js', import.meta.url), { type: 'module' });
+  const worker = trWorker.begin();
   const id = ++jobId;
   return new Promise((resolve, reject) => {
+    const finish = () => {
+      worker.removeEventListener('message', onMsg);
+      worker.removeEventListener('error', onErr);
+    };
     const onMsg = (e) => {
       const d = e.data;
       if (d.id !== id) return;
       if (d.type === 'download') onStatus?.({ text: '下載翻譯模型中…（第一次需要，之後會快取）', progress: d.loaded / d.total });
       else if (d.type === 'progress') onStatus?.({ text: `翻譯中… ${d.done}/${d.total}`, progress: d.done / d.total });
       else {
-        worker.removeEventListener('message', onMsg);
+        finish();
+        trWorker.end();
         if (d.type === 'done') resolve(d.texts);
         else reject(new Error(d.message));
       }
     };
     const onErr = (e) => {
-      worker?.removeEventListener('message', onMsg);
-      worker?.terminate();
-      worker = null; // 下次重新建立
+      finish();
+      trWorker.kill(); // 下次重新建立
+      trWorker.end();
       reject(new Error(e?.message || '背景執行緒載入失敗，請重新整理頁面'));
     };
-    worker.addEventListener('error', onErr, { once: true });
+    worker.addEventListener('error', onErr);
     worker.addEventListener('message', onMsg);
     worker.postMessage({ id, model, texts });
   });

@@ -8,6 +8,12 @@ self.onmessage = async (e) => {
   const { id, model, texts } = e.data;
   try {
     if (!pipes.has(model)) {
+      // 最多留兩個模型（經英文轉譯需要兩個），再多就釋放最早載入的
+      while (pipes.size >= 2) {
+        const [oldest, p] = pipes.entries().next().value;
+        pipes.delete(oldest);
+        await p.dispose?.();
+      }
       const files = new Map();
       pipes.set(model, await pipeline('translation', model, {
         dtype: 'q8',
