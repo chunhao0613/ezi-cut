@@ -18,6 +18,7 @@ async function run(mode, fn) {
     fn(tx.objectStore(STORE));
     tx.oncomplete = () => res();
     tx.onerror = () => rej(tx.error);
+    tx.onabort = () => rej(tx.error || new Error('瀏覽器儲存空間不足，檔案沒有存起來'));
   });
 }
 export const put = (id, value) => run('readwrite', (s) => s.put(value, id));

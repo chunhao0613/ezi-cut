@@ -336,14 +336,15 @@ async function exportGif(o, onProgress, signal) {
   ctx.canvas.height = o.height;
   const gif = GIFEncoder();
   const n = Math.max(1, Math.round((t1 - t0) * o.fps));
-  const delay = Math.round(1000 / o.fps);
+  // GIF 的延遲以 1/100 秒為單位；逐格累計誤差，總長度才會和影片一致（15 fps → 7、7、6 …）
+  const delayAt = (i) => (Math.round(((i + 1) * 100) / o.fps) - Math.round((i * 100) / o.fps)) * 10;
   try {
     for (let i = 0; i < n; i++) {
       if (signal?.aborted) return null;
       ctx.drawImage(await fr.frame(t0 + i / o.fps), 0, 0);
       const { data } = ctx.getImageData(0, 0, o.width, o.height);
       const palette = quantize(data, 256);
-      gif.writeFrame(applyPalette(data, palette), o.width, o.height, { palette, delay });
+      gif.writeFrame(applyPalette(data, palette), o.width, o.height, { palette, delay: delayAt(i) });
       if (i % 2 === 0) {
         onProgress(i / n, `製作 GIF… ${i}/${n} 格`);
         await pause();

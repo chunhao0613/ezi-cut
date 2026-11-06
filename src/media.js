@@ -1,6 +1,7 @@
 // 媒體匯入：讀取中繼資料、產生縮圖與音訊波形
 import { store, emit, uid } from './state.js';
 import * as db from './db.js';
+import { toast } from './ui.js';
 
 const EXT = {
   video: ['mp4', 'mov', 'webm', 'mkv', 'm4v', 'ogv'],
@@ -47,7 +48,10 @@ export async function importFiles(files) {
     const type = typeOf(f);
     if (!type) continue;
     const id = uid();
-    db.put(id, { blob: f, name: f.name, type }).catch((e) => console.warn('無法存入 IndexedDB', e));
+    db.put(id, { blob: f, name: f.name, type }).catch((e) => {
+      console.warn('無法存入 IndexedDB', e);
+      toast(`「${f.name}」沒有存進瀏覽器（${e?.name === 'QuotaExceededError' ? '儲存空間不足' : '儲存失敗'}），重新整理後會不見`);
+    });
     jobs.push(type === 'lut' ? loadLut(id, f, f.name) : loadMedia(id, f, f.name, type));
   }
   return Promise.all(jobs);
@@ -87,10 +91,12 @@ export function removeMedia(id) {
   emit('media');
 }
 
+// 新專案：只清掉媒體庫，保留使用者存的範本與匯入的 LUT（它們放在同一個 IndexedDB 裡）
 export async function clearMedia() {
+  const ids = [...store.media.keys()];
   for (const m of store.media.values()) URL.revokeObjectURL(m.url);
   store.media.clear();
-  await db.clear().catch(() => {});
+  await Promise.all(ids.map((id) => db.del(id).catch(() => {})));
   emit('media');
 }
 

@@ -272,6 +272,9 @@ export function splitClip(clip, t) {
   }
   b.transIn = { ...b.transIn, type: 'none' };
   b.fadeIn = 0;
+  b.xfade = null; // 片段轉場屬於左半段的開頭，不跟著複製到右半段
+  // 後面接著的片段若以這段為轉場對象，改成接右半段
+  for (const o of store.project.clips) if (o.xfade?.prevId === clip.id) o.xfade = { ...o.xfade, prevId: b.id };
   for (const prop of Object.keys(clip.keyframes || {})) {
     const kf = clip.keyframes[prop];
     const v = getProp(clip, prop, local);
@@ -287,6 +290,7 @@ export function splitClip(clip, t) {
 export function duplicateClip(clip) {
   const c = structuredClone(clip);
   c.id = uid();
+  c.xfade = null;
   c.start = clip.start + clip.duration;
   placeClip(c, clip.trackId);
   return c;

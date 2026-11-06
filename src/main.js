@@ -177,6 +177,7 @@ function paste() {
   checkpoint();
   const c = structuredClone(clipboard);
   c.id = uid();
+  c.xfade = null;
   c.start = store.time;
   placeClip(c, clipboard.trackId);
   store.selection = c.id;
@@ -245,7 +246,10 @@ initInspector({
 });
 
 // 長時間的處理：顯示進度，期間鎖住操作
+let busy = false;
 async function busyTask(title, fn) {
+  if (busy) return toast('還有一項處理正在進行，請稍候');
+  busy = true;
   pause();
   const bar = h('div', { class: 'bar' });
   const label = h('div', { class: 'dim' }, '處理中…');
@@ -259,6 +263,7 @@ async function busyTask(title, fn) {
     console.error(e);
     toast(`${title}失敗：${e.message}`);
   } finally {
+    busy = false;
     close();
   }
 }
@@ -776,7 +781,7 @@ window.addEventListener('pointerdown', () => renderer.ensureAudio(), { once: tru
 // ---------- 鍵盤 ----------
 window.addEventListener('keydown', (e) => {
   if (e.target.matches?.('textarea, select, input:not([type=range]):not([type=checkbox]):not([type=color])')) return;
-  if (exporting) return;
+  if (exporting || busy) return; // 長時間處理期間不接受編輯快捷鍵，避免改到處理中的片段
   const k = e.key.toLowerCase();
   const mod = e.ctrlKey || e.metaKey;
   const isRange = !!e.target.matches?.('input[type=range]');

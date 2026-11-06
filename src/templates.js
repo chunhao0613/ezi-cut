@@ -3,6 +3,8 @@ import { store, emit, checkpoint, makeClip, uid, normalizeProject, newProject, s
 import { TEXT_PRESETS, FILTER_PRESETS } from './effects.js';
 import { importFiles } from './media.js';
 import * as db from './db.js';
+import { packBundle, unpackBundle, dataUrlToBlob } from './bundle.js';
+import { avgSpeed } from './timemap.js';
 
 // ---------- 內建範本 ----------
 const T = (name) => TEXT_PRESETS.find((p) => p.name === name);
@@ -120,8 +122,13 @@ export async function saveTemplate(name, slotIds) {
   p.clips.forEach((c) => {
     c.slot = slots.has(c.id) ? { label: `素材 ${[...slots].indexOf(c.id) + 1}` } : undefined;
     if (c.type === 'text' && !c.caption) c.editable = true;
-    if (c.slot) c.mediaId = null;
-    else if (c.mediaId && !files[c.mediaId]) {
+    if (c.slot) {
+      // 空位一律當圖片保存，才會顯示「＋ 素材 N」佔位；作者的倒放 / 人聲增強素材不跟著存
+      c.mediaId = null;
+      c.type = 'image';
+      c.reversed = null;
+      c.enhanced = null;
+    } else if (c.mediaId && !files[c.mediaId]) {
       const m = store.media.get(c.mediaId);
       if (m?.blob) files[c.mediaId] = { blob: m.blob, name: m.name, type: m.type };
     }
@@ -176,7 +183,9 @@ export async function applyTemplate(tpl, fills, texts) {
     c.mediaId = m.id;
     c.type = m.type === 'video' ? 'video' : 'image';
     c.in = 0;
-    if (m.type === 'video' && isFinite(m.duration)) c.duration = Math.min(c.duration, m.duration / (c.speed || 1));
+    c.reversed = null;
+    c.enhanced = null;
+    if (m.type === 'video' && isFinite(m.duration)) c.duration = Math.min(c.duration, m.duration / avgSpeed(c));
   });
   checkpoint();
   store.project = p;
@@ -186,22 +195,24 @@ export async function applyTemplate(tpl, fills, texts) {
 }
 
 // ---------- 範本檔案匯出 / 匯入（可分享給別人） ----------
-const toB64 = (blob) => new Promise((r) => {
-  const fr = new FileReader();
-  fr.onload = () => r(fr.result);
-  fr.readAsDataURL(blob);
-});
+const TPL_MAGIC = 'EZITPL2\n';
 export async function exportTemplateFile(tpl) {
-  const files = {};
-  for (const [id, f] of Object.entries(tpl.files || {})) files[id] = { name: f.name, type: f.type, data: await toB64(f.blob) };
-  const json = JSON.stringify({ ezicutTemplate: 1, name: tpl.name, project: tpl.project, thumb: tpl.thumb, files });
-  return new Blob([json], { type: 'application/json' });
+  return packBundle(TPL_MAGIC, { ezicutTemplate: 2, name: tpl.name, project: tpl.project, thumb: tpl.thumb }, tpl.files || {});
 }
 export async function importTemplateFile(file) {
-  const d = JSON.parse(await file.text());
+  const bundle = await unpackBundle(file, TPL_MAGIC);
+  let d;
+  if (bundle) d = { ...bundle.manifest, files: bundle.files };
+  else {
+    try {
+      d = JSON.parse(await file.text()); // 舊版 JSON 範本檔
+    } catch {
+      throw new Error('這不是 EziCut 範本檔');
+    }
+  }
   if (!d.ezicutTemplate) throw new Error('這不是 EziCut 範本檔');
   const files = {};
-  for (const [id, f] of Object.entries(d.files || {})) files[id] = { name: f.name, type: f.type, blob: await (await fetch(f.data)).blob() };
+  for (const [id, f] of Object.entries(d.files || {})) files[id] = { name: f.name, type: f.type, blob: f.blob || (await dataUrlToBlob(f.data)) };
   const id = uid();
   const rec = { id, type: 'template', name: d.name, project: d.project, files, thumb: d.thumb, created: Date.now() };
   await db.put(id, rec);

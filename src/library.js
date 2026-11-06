@@ -345,7 +345,7 @@ export function initLibrary(api) {
   }
 
   function template() {
-    const tplFile = h('input', { type: 'file', accept: '.json,application/json', hidden: true, onchange: async () => {
+    const tplFile = h('input', { type: 'file', accept: '.ezitpl,.json,application/json', hidden: true, onchange: async () => {
       const f = tplFile.files[0];
       if (!f) return;
       try {
@@ -445,8 +445,11 @@ export function initLibrary(api) {
       const t = await saveTemplate(name.value.trim() || '我的範本', [...chosen]);
       close();
       toast(`已存成範本「${t.name}」`);
-      const a = h('a', { href: URL.createObjectURL(await exportTemplateFile(t)), download: `${t.name}.ezicut.json` });
-      if (confirm('要同時下載範本檔，方便分享給朋友嗎？')) a.click();
+      if (confirm('要同時下載範本檔，方便分享給朋友嗎？')) {
+        const a = h('a', { href: URL.createObjectURL(await exportTemplateFile(t)), download: `${t.name}.ezitpl` });
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(a.href), 60000);
+      }
     };
   }
 
