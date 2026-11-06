@@ -128,7 +128,7 @@ export async function loadMedia(id, blob, name, type) {
     } else if (type === 'video') {
       const v = document.createElement('video');
       v.muted = true;
-      v.preload = 'auto';
+      v.preload = 'metadata'; // 縮圖排隊期間先不要下載整個影片
       v.playsInline = true;
       v.src = m.url;
       await once(v, 'loadedmetadata');
@@ -145,7 +145,7 @@ export async function loadMedia(id, blob, name, type) {
       m.height = v.videoHeight;
       m.ready = true;
       emit('media');
-      genThumbs(m, v);
+      thumbQueue(() => genThumbs(m, v));
     } else {
       const a = new Audio();
       a.preload = 'metadata';
@@ -183,36 +183,99 @@ async function genThumbs(m, v) {
   emit('media');
 }
 
-async function computePeaks(m, blob) {
-  if (blob.size > 600e6) return;
+// 同時處理的數量上限：一次丟進很多大檔時，不要同時解碼全部（手機會記憶體不足而閃退）
+function limiter(n) {
+  let active = 0;
+  const q = [];
+  const next = () => {
+    if (active >= n || !q.length) return;
+    active++;
+    const { fn, res, rej } = q.shift();
+    Promise.resolve().then(fn).then(res, rej).finally(() => {
+      active--;
+      next();
+    });
+  };
+  return (fn) => new Promise((res, rej) => {
+    q.push({ fn, res, rej });
+    next();
+  });
+}
+const peakQueue = limiter(1);
+const thumbQueue = limiter(2);
+
+const PEAK_RATE = 100; // 每秒 100 個波形點
+const SMALL_FILE = 120e6; // 小檔直接整檔解碼比較快；大檔改用串流，記憶體用量固定
+
+function computePeaks(m, blob) {
+  return peakQueue(async () => {
+    if (!store.media.has(m.id)) return; // 排隊期間已被移除
+    let peaks = null;
+    try {
+      peaks = blob.size <= SMALL_FILE ? await peaksWhole(blob) : await peaksStream(blob);
+    } catch (e) {
+      console.warn('波形計算失敗', m.name, e);
+    }
+    if (peaks === false) m.hasAudio = false; // 確定沒有音軌
+    else if (peaks) {
+      m.peaks = peaks;
+      m.hasAudio = true;
+    } else if (blob.size <= SMALL_FILE) m.hasAudio = false; // 小檔解不開：當作沒有聲音（和以前一樣）
+    emit('media');
+  });
+}
+
+function normalize(peaks) {
+  let max = 1e-4;
+  for (const v of peaks) if (v > max) max = v;
+  for (let i = 0; i < peaks.length; i++) peaks[i] /= max;
+  return peaks;
+}
+
+export async function peaksWhole(blob) {
+  const ab = await new OfflineAudioContext(1, 1, 44100).decodeAudioData(await blob.arrayBuffer());
+  const n = Math.ceil(ab.duration * PEAK_RATE);
+  const peaks = new Float32Array(n);
+  const chans = Array.from({ length: ab.numberOfChannels }, (_, i) => ab.getChannelData(i));
+  const step = ab.sampleRate / PEAK_RATE;
+  const len = chans[0].length;
+  for (let i = 0; i < n; i++) {
+    let mx = 0;
+    const s1 = Math.min(len, Math.floor((i + 1) * step));
+    for (let s = Math.floor(i * step); s < s1; s += 3) {
+      for (const ch of chans) {
+        const v = Math.abs(ch[s]);
+        if (v > mx) mx = v;
+      }
+    }
+    peaks[i] = mx;
+  }
+  return normalize(peaks);
+}
+
+// 大檔：用 Mediabunny 一段一段解碼音軌，邊解邊算波形，不把整個檔案讀進記憶體（也沒有檔案大小上限）
+export async function peaksStream(blob) {
+  const { Input, BlobSource, ALL_FORMATS, AudioBufferSink } = await import('mediabunny');
+  const input = new Input({ source: new BlobSource(blob), formats: ALL_FORMATS });
   try {
-    const buf = await blob.arrayBuffer();
-    const ac = new OfflineAudioContext(1, 1, 44100);
-    const ab = await ac.decodeAudioData(buf);
-    const rate = 100;
-    const n = Math.ceil(ab.duration * rate);
-    const peaks = new Float32Array(n);
-    const chans = Array.from({ length: ab.numberOfChannels }, (_, i) => ab.getChannelData(i));
-    const step = ab.sampleRate / rate;
-    const len = chans[0].length;
-    let max = 1e-4;
-    for (let i = 0; i < n; i++) {
-      let mx = 0;
-      const s1 = Math.min(len, Math.floor((i + 1) * step));
-      for (let s = Math.floor(i * step); s < s1; s += 3) {
-        for (const ch of chans) {
-          const v = Math.abs(ch[s]);
-          if (v > mx) mx = v;
+    const track = await input.getPrimaryAudioTrack();
+    if (!track) return false;
+    if (!(await track.canDecode())) return null;
+    const dur = await input.computeDuration();
+    const peaks = new Float32Array(Math.ceil(dur * PEAK_RATE) + 1);
+    for await (const { buffer, timestamp } of new AudioBufferSink(track).buffers()) {
+      const rate = buffer.sampleRate;
+      for (let ch = 0; ch < buffer.numberOfChannels; ch++) {
+        const d = buffer.getChannelData(ch);
+        for (let s = 0; s < d.length; s += 3) {
+          const i = Math.floor((timestamp + s / rate) * PEAK_RATE);
+          const v = Math.abs(d[s]);
+          if (i >= 0 && i < peaks.length && v > peaks[i]) peaks[i] = v;
         }
       }
-      peaks[i] = mx;
-      if (mx > max) max = mx;
     }
-    for (let i = 0; i < n; i++) peaks[i] /= max;
-    m.peaks = peaks;
-    m.hasAudio = true;
-  } catch {
-    m.hasAudio = false;
+    return normalize(peaks);
+  } finally {
+    input.dispose?.();
   }
-  emit('media');
 }
